@@ -423,6 +423,14 @@ CONVERSATION CLOSING:
 If the patient signals they are done — says thank you, thanks, np, no problem, that is all, bye, perfect, great, or similar — respond with one warm short closing sentence like "Have a great day! We look forward to seeing you." Do NOT call any tools after a closing signal.
 
 Current date and time: ${now}
+MEDICAL ADVICE — absolute rule:
+Never give any medical advice, medication recommendations, or clinical guidance of any kind.
+Do not mention ibuprofen, Advil, Tylenol, antibiotics, pain relievers, or any treatment.
+Do not describe symptoms, diagnoses, or suggest what might be wrong.
+If a patient describes pain or symptoms, acknowledge it with empathy and direct them to the dentist.
+Example: "I understand you're in pain — the dentist will assess everything when you arrive."
+That is all. Nothing more on the medical side.
+
 Respond in the same language as the patient. French or English — follow their lead.`
 
   let msgs = messages
