@@ -149,6 +149,7 @@ async function runTool(
       return JSON.stringify({ valid: result.valid, reason: result.reason })
     }
 
+
     case 'get_pending_appointment': {
       const pending = sessionBookings.get(`${sessionKey}:${input.external_ref}`)
       if (pending) {
@@ -156,10 +157,40 @@ async function runTool(
           has_pending: true,
           appointment_id: pending.appointment_id,
           start_time: pending.start_time,
-          message: 'Patient already has a pending appointment from this session. Cancel it first if they want to change.'
+          message: 'Patient has a pending appointment this session. Cancel first to change.'
         })
       }
-      return JSON.stringify({ has_pending: false, message: 'No pending appointment. Safe to book.' })
+      const validation = await validatePatientToken(input.external_ref, clinicId)
+      if (validation.valid && validation.internalId) {
+        const now = new Date().toISOString()
+        const { data } = await db
+          .from('appointments')
+          .select('id, start_time, appointment_type')
+          .eq('clinic_id', clinicId)
+          .eq('patient_id', validation.internalId)
+          .eq('status', 'scheduled')
+          .gte('start_time', now)
+          .order('start_time')
+          .limit(1)
+        if (data && data.length > 0) {
+          const apt = data[0]
+          const displayTime = new Date(apt.start_time).toLocaleDateString('en-CA', {
+            weekday: 'long', month: 'long', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+          })
+          return JSON.stringify({
+            has_pending: true,
+            appointment_id: apt.id,
+            start_time: apt.start_time,
+            appointment_type: apt.appointment_type,
+            display_time: displayTime,
+            message: `Patient has a ${apt.appointment_type} on ${displayTime}. Cancel it first to change or cancel.`
+          })
+        }
+      }
+      return JSON.stringify({ has_pending: false, message: 'No upcoming appointments. Safe to book.' })
+    }
+
     }
 
     case 'cancel_appointment': {
