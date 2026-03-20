@@ -213,18 +213,39 @@ async function runTool(
       const duration = input.appointment_type === 'filling' ? 90 : 60
       const isEmergency = input.urgency === 'emergency'
       const slots = []
-      const checkDate = new Date()
-      checkDate.setDate(checkDate.getDate() + (isEmergency ? 0 : 1))
       let daysChecked = 0
 
+      // Get current date in Montreal time
+      const nowInMontreal = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Toronto' }))
+      const checkDate = new Date(nowInMontreal)
+      if (!isEmergency) checkDate.setDate(checkDate.getDate() + 1)
+      checkDate.setHours(0, 0, 0, 0)
+
       while (slots.length < (isEmergency ? 3 : 6) && daysChecked < 14) {
-        const day = checkDate.getDay()
-        if (day !== 0 && day !== 6) {
+        const dayOfWeek = checkDate.getDay()
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
           const hours = isEmergency ? [8, 9, 10, 11] : [9, 10, 11, 14, 15, 16]
           for (const hour of hours) {
-            const slotStart = new Date(checkDate)
-            slotStart.setHours(hour, 0, 0, 0)
+            // Build slot time in Montreal timezone by constructing ISO string with offset
+            const year = checkDate.getFullYear()
+            const month = String(checkDate.getMonth() + 1).padStart(2, '0')
+            const day = String(checkDate.getDate()).padStart(2, '0')
+            const hourStr = String(hour).padStart(2, '0')
+            // Determine Montreal UTC offset (EST = -5, EDT = -4)
+            // We use a reliable method: format a known date and extract offset
+            const testDate = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
+            const montrealStr = testDate.toLocaleString('en-US', { timeZone: 'America/Toronto', hour12: false, hour: '2-digit', minute: '2-digit' })
+            const utcStr = testDate.toLocaleString('en-US', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit' })
+            const montrealHour = parseInt(montrealStr.split(':')[0]) % 24
+            const utcHour = parseInt(utcStr.split(':')[0]) % 24
+            const offsetHours = utcHour - montrealHour
+            // Create slot at the correct UTC time that equals the desired Montreal hour
+            const slotStart = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
+            slotStart.setHours(slotStart.getHours() + offsetHours)
             const slotEnd = new Date(slotStart.getTime() + duration * 60000)
+
+            // Skip past slots
+            if (slotStart <= new Date()) { continue }
 
             const { data: conflict } = await db
               .from('appointments')
@@ -238,7 +259,7 @@ async function runTool(
             if (!conflict || conflict.length === 0) {
               slots.push({
                 datetime: slotStart.toISOString(),
-                display: slotStart.toLocaleDateString('en-CA', {
+                display: slotStart.toLocaleString('en-CA', {
                   weekday: 'long', month: 'long', day: 'numeric',
                   hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
                 }),
@@ -263,7 +284,7 @@ async function runTool(
       return JSON.stringify({ slots })
     }
 
-    case 'book_appointment': {
+        case 'book_appointment': {
       const validation = await validatePatientToken(input.external_ref, clinicId)
       if (!validation.valid || !validation.internalId) {
         await auditValidationFailed(clinicId, validation.reason || 'Invalid token')
