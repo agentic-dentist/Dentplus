@@ -19,7 +19,7 @@ export default function AdminLogin() {
     setError('')
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) { setError('Invalid email or password.'); setLoading(false); return }
-    router.push('/admin')
+    router.push('/admin/dashboard')
   }
 
   return (
