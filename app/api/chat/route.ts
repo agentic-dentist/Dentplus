@@ -35,6 +35,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
     }
 
+    // ── Detect closing signals before running agents ────────────────────────
+    const lastMsg = [...messages].reverse().find((m: { role: string }) => m.role === 'user')
+    const lastText = typeof lastMsg?.content === 'string'
+      ? lastMsg.content.toLowerCase().trim()
+      : (lastMsg?.content?.[0]?.text ?? '').toLowerCase().trim()
+
+    const closingPhrases = ['thank you', 'thanks', 'np', 'no problem', 'that is all',
+      'thats all', "that's all", 'bye', 'goodbye', 'perfect', 'great', 'merci',
+      'bonne journee', 'bonne journée', 'au revoir', 'parfait', 'super', 'ok bye',
+      'ok thanks', 'ok thank you', 'sounds good', 'got it', 'all good']
+
+    const isClosing = closingPhrases.some(p => lastText === p || lastText.startsWith(p + ' ') || lastText.endsWith(' ' + p))
+
+    if (isClosing) {
+      const closings = [
+        'Have a great day! We look forward to seeing you.',
+        'You are welcome! Have a wonderful day.',
+        'Happy to help. Take care and see you soon!',
+        'Of course! Have a great day.',
+        'De rien! Bonne journée et à bientôt.'
+      ]
+      const closing = closings[Math.floor(Math.random() * closings.length)]
+      return NextResponse.json({ message: closing, meta: { intent: 'greeting', urgency: 'routine', agent: 'concierge' } })
+    }
+
     // ── Start conversation audit ─────────────────────────────────────────────
     const isFirstMessage = messages.length <= 1
     if (isFirstMessage) {
