@@ -1,19 +1,27 @@
 'use client'
-
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 const CLINIC_ID = process.env.NEXT_PUBLIC_DEMO_CLINIC_ID!
 
-const NAV = [
-  { icon: '▦', label: 'Overview', href: '/dashboard' },
-  { icon: '◈', label: 'Patients', href: '/dashboard/patients' },
-  { icon: '◷', label: 'Schedule', href: '/dashboard/schedule' },
-  { icon: '📋', label: 'Intake review', href: '/dashboard/intake' },
-  { icon: '⬡', label: 'AI Agent', href: '/dashboard/agent' },
-  { icon: '◎', label: 'Reports', href: '/dashboard/reports' },
-  { icon: '◉', label: 'Settings', href: '/dashboard/settings' },
-]
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [pulse, setPulse] = useState(false)
+  const [time, setTime] = useState('')
+
+  // Extract slug from pathname: /clinic/demo/dashboard → demo
+  const slug = pathname.split('/')[2] || 'demo'
+
+  const NAV = [
+    { icon: '▦', label: 'Overview', href: `/clinic/${slug}/dashboard` },
+    { icon: '◈', label: 'Patients', href: `/clinic/${slug}/dashboard/patients` },
+    { icon: '◷', label: 'Schedule', href: `/clinic/${slug}/dashboard/schedule` },
+    { icon: '📋', label: 'Intake review', href: `/clinic/${slug}/dashboard/intake` },
+    { icon: '⬡', label: 'AI Agent', href: `/clinic/${slug}/dashboard/agent` },
+    { icon: '◎', label: 'Reports', href: `/clinic/${slug}/dashboard/reports` },
+    { icon: '◉', label: 'Settings', href: `/clinic/${slug}/dashboard/settings` },
+  ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
