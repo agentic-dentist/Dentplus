@@ -15,8 +15,6 @@ import type { OrchestratorResult } from './orchestrator'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// ─── Tool definitions ─────────────────────────────────────────────────────────
-
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'lookup_patient',
@@ -36,6 +34,17 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         external_ref: { type: 'string', description: 'Patient token from lookup_patient' }
+      },
+      required: ['external_ref']
+    }
+  },
+  {
+    name: 'get_pending_appointment',
+    description: 'Check if the patient already has a recently booked appointment in this session. Always call this before booking to avoid duplicates.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        external_ref: { type: 'string', description: 'Patient token' }
       },
       required: ['external_ref']
     }
@@ -61,8 +70,19 @@ const TOOLS: Anthropic.Tool[] = [
     }
   },
   {
+    name: 'cancel_appointment',
+    description: 'Cancel an existing appointment. Always call this before rebooking when the patient wants to change their slot.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointment_id: { type: 'string', description: 'Appointment ID to cancel' }
+      },
+      required: ['appointment_id']
+    }
+  },
+  {
     name: 'book_appointment',
-    description: 'Book an appointment. Requires validated external_ref from validate_patient.',
+    description: 'Book an appointment. Always call get_pending_appointment first to check for duplicates. Requires validated external_ref.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -76,7 +96,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'register_patient',
-    description: 'Register a new patient. Returns a secure token, never stores raw PHI in agent memory.',
+    description: 'Register a new patient. Returns a secure token only.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -90,16 +110,18 @@ const TOOLS: Anthropic.Tool[] = [
   }
 ]
 
-// ─── Tool execution ───────────────────────────────────────────────────────────
-
 type ToolInput = Record<string, string>
 type DB = ReturnType<typeof createServerClient>
+
+// Track last booked appointment per conversation session
+const sessionBookings = new Map<string, { appointment_id: string; start_time: string; external_ref: string }>()
 
 async function runTool(
   name: string,
   input: ToolInput,
   clinicId: string,
-  db: DB
+  db: DB,
+  sessionKey: string
 ): Promise<string> {
 
   switch (name) {
@@ -124,8 +146,49 @@ async function runTool(
           success: true
         })
       }
-      // Return validation result but NEVER the internal id
       return JSON.stringify({ valid: result.valid, reason: result.reason })
+    }
+
+    case 'get_pending_appointment': {
+      const pending = sessionBookings.get(`${sessionKey}:${input.external_ref}`)
+      if (pending) {
+        return JSON.stringify({
+          has_pending: true,
+          appointment_id: pending.appointment_id,
+          start_time: pending.start_time,
+          message: 'Patient already has a pending appointment from this session. Cancel it first if they want to change.'
+        })
+      }
+      return JSON.stringify({ has_pending: false, message: 'No pending appointment. Safe to book.' })
+    }
+
+    case 'cancel_appointment': {
+      const { error } = await db
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', input.appointment_id)
+        .eq('clinic_id', clinicId)
+
+      if (error) return JSON.stringify({ success: false, error: 'Could not cancel appointment.' })
+
+      // Clear session booking
+      for (const [key, val] of sessionBookings.entries()) {
+        if (val.appointment_id === input.appointment_id) {
+          sessionBookings.delete(key)
+          break
+        }
+      }
+
+      await audit({
+        clinic_id: clinicId,
+        action: 'appointment_cancelled',
+        agent: 'concierge',
+        entity_type: 'appointment',
+        entity_id: input.appointment_id,
+        success: true
+      })
+
+      return JSON.stringify({ success: true, message: 'Appointment cancelled. You can now book a new slot.' })
     }
 
     case 'get_available_slots': {
@@ -157,7 +220,7 @@ async function runTool(
             if (!conflict || conflict.length === 0) {
               slots.push({
                 datetime: slotStart.toISOString(),
-                display: slotStart.toLocaleDateString('fr-CA', {
+                display: slotStart.toLocaleDateString('en-CA', {
                   weekday: 'long', month: 'long', day: 'numeric',
                   hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
                 }),
@@ -179,18 +242,16 @@ async function runTool(
         success: true
       })
 
-      return JSON.stringify({ slots, message: isEmergency ? 'Emergency slots — earliest available' : 'Available slots' })
+      return JSON.stringify({ slots })
     }
 
     case 'book_appointment': {
-      // Step 1: Re-validate token server-side (never trust client-passed tokens)
       const validation = await validatePatientToken(input.external_ref, clinicId)
       if (!validation.valid || !validation.internalId) {
         await auditValidationFailed(clinicId, validation.reason || 'Token invalid at booking time')
         return JSON.stringify({ success: false, error: validation.reason || 'Patient validation failed' })
       }
 
-      // Step 2: Book using internal id (never exposed to agent)
       const startTime = new Date(input.start_time)
       const duration = input.appointment_type === 'filling' ? 90 : 60
       const endTime = new Date(startTime.getTime() + duration * 60000)
@@ -199,7 +260,7 @@ async function runTool(
         .from('appointments')
         .insert({
           clinic_id: clinicId,
-          patient_id: validation.internalId,  // internal id used here only
+          patient_id: validation.internalId,
           appointment_type: input.appointment_type,
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
@@ -214,10 +275,16 @@ async function runTool(
         return JSON.stringify({ success: false, error: 'Booking failed. Please try again.' })
       }
 
-      // Step 3: Audit with token, never internal id
+      // Track in session to prevent duplicates
+      sessionBookings.set(`${sessionKey}:${input.external_ref}`, {
+        appointment_id: data.id,
+        start_time: data.start_time,
+        external_ref: input.external_ref
+      })
+
       await auditBooking(clinicId, data.id, input.external_ref, input.appointment_type)
 
-      const confirmTime = new Date(data.start_time).toLocaleDateString('fr-CA', {
+      const confirmTime = new Date(data.start_time).toLocaleDateString('en-CA', {
         weekday: 'long', month: 'long', day: 'numeric',
         hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
       })
@@ -225,8 +292,7 @@ async function runTool(
       return JSON.stringify({
         success: true,
         appointment_id: data.id,
-        confirmation_time: confirmTime,
-        message: 'Appointment confirmed'
+        confirmation_time: confirmTime
       })
     }
 
@@ -250,9 +316,8 @@ async function runTool(
         error_message: result.error
       })
 
-      // Return token only — never echo back the PHI
       return JSON.stringify(result.success
-        ? { success: true, external_ref: result.external_ref, message: 'Patient registered successfully' }
+        ? { success: true, external_ref: result.external_ref }
         : { success: false, error: result.error }
       )
     }
@@ -262,8 +327,6 @@ async function runTool(
   }
 }
 
-// ─── Concierge agent ──────────────────────────────────────────────────────────
-
 export async function runConcierge(
   messages: Anthropic.MessageParam[],
   clinicId: string,
@@ -272,41 +335,47 @@ export async function runConcierge(
   orchestratorContext: OrchestratorResult
 ): Promise<string> {
   const db = createServerClient()
+  const sessionKey = `${clinicId}:${Date.now().toString(36)}`
 
-  const now = new Date().toLocaleDateString('fr-CA', {
+  const now = new Date().toLocaleDateString('en-CA', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     hour: 'numeric', minute: '2-digit', timeZone: timezone
   })
 
   const urgencyInstruction = orchestratorContext.urgency === 'emergency'
-    ? '\n⚠️ EMERGENCY DETECTED: Prioritize immediate appointment. Offer earliest available slot first.' : ''
+    ? '\nEMERGENCY: Patient may have severe pain or trauma. Offer earliest available slot immediately.' : ''
 
-  const system = `You are the AI front desk agent for ${clinicName}, a dental clinic in Montréal, Québec.
+  const system = `You are the AI front desk assistant for ${clinicName}, a dental clinic in Montréal, Québec.
 ${urgencyInstruction}
 
-Your role: Help patients book, cancel, or reschedule appointments efficiently and warmly.
+FORMATTING RULES — strictly follow:
+- Never use markdown: no **bold**, no *italic*, no bullet points with *, no headers with #
+- Never use emojis
+- Write in plain conversational sentences only
+- Keep responses short and clear
 
-SECURITY RULES — follow strictly:
-1. Always call validate_patient before book_appointment
-2. Never repeat or confirm PHI (phone numbers, dates of birth, emails) back to the patient
-3. Use external_ref tokens for all patient operations — never ask for internal IDs
-4. If validation fails, inform the patient politely and offer to register them
+BOOKING RULES — strictly follow:
+1. Always call get_pending_appointment before book_appointment
+2. If patient already has a pending appointment and wants to change: call cancel_appointment first, then book_appointment
+3. Never book twice — one appointment per conversation unless the previous was cancelled
+4. Always call validate_patient before book_appointment
+5. Never repeat PHI back to the patient
 
 Conversation flow:
-1. Greet warmly, ask reason for visit
-2. Ask: new or returning patient?
-3. Returning → lookup_patient by name → validate_patient → proceed
-4. New → collect name + phone → register_patient → proceed
-5. get_available_slots for their appointment type
-6. Present 3 clear options (in French if patient writes in French)
-7. book_appointment when they confirm
-8. Confirm with time — no other PHI
+1. Greet, ask reason for visit
+2. New or returning patient?
+3. Returning: lookup_patient → validate_patient → get_pending_appointment → proceed
+4. New: collect name + phone → register_patient → proceed
+5. get_available_slots for their type
+6. Present 3 options clearly numbered: "1. Monday March 23 at 9:00 AM, 2. ..."
+7. When they choose a number: get_pending_appointment → book_appointment
+8. If they want to change: cancel_appointment → book_appointment with new slot
+9. Confirm once with date and time only
 
 Appointment types: cleaning, checkup, filling, consultation, emergency
-Current date/time: ${now}
+Current date and time: ${now}
 
-Respond in the same language as the patient (French or English).
-Be warm, concise, professional. Never give medical diagnoses.`
+Respond in the same language as the patient (French or English). Be warm and concise.`
 
   let msgs = messages
   let finalText = ''
@@ -332,7 +401,7 @@ Be warm, concise, professional. Never give medical diagnoses.`
 
       for (const block of response.content) {
         if (block.type === 'tool_use') {
-          const result = await runTool(block.name, block.input as ToolInput, clinicId, db)
+          const result = await runTool(block.name, block.input as ToolInput, clinicId, db, sessionKey)
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
         }
       }
