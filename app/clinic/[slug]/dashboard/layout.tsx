@@ -9,6 +9,7 @@ const NAV = [
   { icon: '▦', label: 'Overview', href: '/dashboard' },
   { icon: '◈', label: 'Patients', href: '/dashboard/patients' },
   { icon: '◷', label: 'Schedule', href: '/dashboard/schedule' },
+  { icon: '📋', label: 'Intake review', href: '/dashboard/intake' },
   { icon: '⬡', label: 'AI Agent', href: '/dashboard/agent' },
   { icon: '◎', label: 'Reports', href: '/dashboard/reports' },
   { icon: '◉', label: 'Settings', href: '/dashboard/settings' },
