@@ -35,16 +35,16 @@ export default async function SplashPage({
           border: 1px solid #E2E8F0;
           padding: 48px 40px;
           width: 100%;
-          max-width: 420px;
+          max-width: 400px;
           text-align: center;
           box-shadow: 0 4px 24px rgba(0,0,0,0.06);
         }
 
         .logo-wrap {
-          width: 64px; height: 64px;
-          border-radius: 16px;
+          width: 68px; height: 68px;
+          border-radius: 18px;
           display: flex; align-items: center; justify-content: center;
-          font-size: 32px;
+          font-size: 34px;
           margin: 0 auto 20px;
         }
 
@@ -57,60 +57,67 @@ export default async function SplashPage({
           margin-bottom: 6px;
         }
 
-        .clinic-address {
+        .clinic-info {
           font-size: 13px;
           color: #94A3B8;
-          margin-bottom: 32px;
+          margin-bottom: 8px;
         }
 
         .divider {
+          height: 1px;
+          background: #F1F5F9;
+          margin: 28px 0;
+        }
+
+        .section-label {
           font-size: 11px;
           font-weight: 600;
           letter-spacing: 1px;
           text-transform: uppercase;
           color: #CBD5E1;
-          margin-bottom: 20px;
+          margin-bottom: 14px;
         }
 
         .btn {
           display: block;
           width: 100%;
-          padding: 14px 24px;
+          padding: 13px 24px;
           border-radius: 12px;
           font-size: 15px;
           font-weight: 500;
           font-family: 'DM Sans', sans-serif;
           cursor: pointer;
           text-decoration: none;
+          text-align: center;
           transition: all 0.15s;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
+          border: none;
         }
 
         .btn-primary {
           color: white;
-          border: none;
         }
         .btn-primary:hover { filter: brightness(0.92); }
 
         .btn-secondary {
           background: #F8FAFC;
           color: #475569;
-          border: 1.5px solid #E2E8F0;
+          border: 1.5px solid #E2E8F0 !important;
         }
-        .btn-secondary:hover { background: #F1F5F9; border-color: #CBD5E1; }
+        .btn-secondary:hover { background: #F1F5F9; }
 
-        .btn-ghost {
-          background: none;
-          border: none;
+        .staff-link {
+          display: block;
+          margin-top: 20px;
+          font-size: 12px;
           color: #94A3B8;
-          font-size: 13px;
-          margin-bottom: 0;
-          padding: 8px;
+          text-decoration: none;
+          transition: color 0.15s;
         }
-        .btn-ghost:hover { color: #64748B; }
+        .staff-link:hover { color: #64748B; }
 
         .footer {
-          margin-top: 32px;
+          margin-top: 28px;
           font-size: 12px;
           color: #CBD5E1;
         }
@@ -126,29 +133,34 @@ export default async function SplashPage({
 
           <div className="clinic-name">{clinic.name}</div>
           {clinic.address && (
-            <div className="clinic-address">{clinic.address}</div>
+            <div className="clinic-info">{clinic.address}</div>
+          )}
+          {clinic.phone && (
+            <div className="clinic-info">{clinic.phone}</div>
           )}
 
-          <div className="divider">Welcome — how can we help?</div>
+          <div className="divider" />
+
+          <div className="section-label">Patient access</div>
 
           <Link
-            href={`/clinic/${slug}/portal`}
+            href={`/clinic/${slug}/login?type=patient&mode=register`}
             className="btn btn-primary"
             style={{ background: color }}
           >
-            I am a patient
+            Create an account
           </Link>
 
           <Link
-            href={`/clinic/${slug}/book`}
+            href={`/clinic/${slug}/login?type=patient`}
             className="btn btn-secondary"
           >
-            Book an appointment
+            Sign in
           </Link>
 
           <Link
             href={`/clinic/${slug}/login?type=staff`}
-            className="btn btn-ghost"
+            className="staff-link"
           >
             Clinic staff login →
           </Link>
