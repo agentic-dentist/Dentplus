@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { usePathname } from 'next/navigation'
 
 interface Appointment {
   id: string
   start_time: string
-  end_time: string
   appointment_type: string
   reason: string
   status: string
@@ -14,14 +14,9 @@ interface Appointment {
   patients: { full_name: string; phone: string } | null
 }
 
-const CLINIC_ID = process.env.NEXT_PUBLIC_DEMO_CLINIC_ID!
-
 const TYPE_COLOR: Record<string, string> = {
-  cleaning: '#0EA5E9',
-  checkup: '#6366F1',
-  filling: '#A78BFA',
-  emergency: '#F43F5E',
-  consultation: '#F59E0B'
+  cleaning: '#0EA5E9', checkup: '#6366F1', filling: '#A78BFA',
+  emergency: '#F43F5E', consultation: '#F59E0B'
 }
 
 function useCountUp(target: number, duration = 1000) {
@@ -43,10 +38,13 @@ function useCountUp(target: number, duration = 1000) {
 }
 
 export default function DashboardPage() {
+  const [clinicId, setClinicId] = useState('')
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ today: 0, ai_booked: 0, patients: 0 })
   const [mounted, setMounted] = useState(false)
+  const supabase = createClient()
+  const pathname = usePathname()
 
   const todayCount = useCountUp(stats.today)
   const aiCount = useCountUp(stats.ai_booked)
@@ -54,40 +52,49 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setMounted(true)
-    const db = createClient()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-    // ← KEY FIX: only fetch scheduled appointments
-    db.from('appointments')
-      .select('*, patients(full_name, phone)')
-      .eq('clinic_id', CLINIC_ID)
-      .eq('status', 'scheduled')
-      .gte('start_time', today.toISOString())
-      .lt('start_time', tomorrow.toISOString())
-      .order('start_time')
-      .then(({ data }) => {
-        setAppointments(data || [])
-        setStats(s => ({ ...s, today: (data || []).length }))
-        setLoading(false)
-      })
+      // Resolve clinic from staff account — not env var
+      const { data: staff } = await supabase
+        .from('staff_accounts')
+        .select('clinic_id')
+        .eq('auth_id', user.id)
+        .single()
 
-    db.from('appointments')
-      .select('id, booked_via', { count: 'exact' })
-      .eq('clinic_id', CLINIC_ID)
-      .eq('status', 'scheduled')
-      .then(({ data }) => {
-        const ai = (data || []).filter(a => a.booked_via === 'web_agent').length
-        setStats(s => ({ ...s, ai_booked: ai }))
-      })
+      if (!staff) return
+      setClinicId(staff.clinic_id)
 
-    db.from('patients')
-      .select('id', { count: 'exact' })
-      .eq('clinic_id', CLINIC_ID)
-      .eq('is_active', true)
-      .then(({ count }) => setStats(s => ({ ...s, patients: count || 0 })))
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+
+      const [{ data: apts }, { data: allApts }, { count }] = await Promise.all([
+        supabase.from('appointments')
+          .select('*, patients(full_name, phone)')
+          .eq('clinic_id', staff.clinic_id)
+          .eq('status', 'scheduled')
+          .gte('start_time', today.toISOString())
+          .lt('start_time', tomorrow.toISOString())
+          .order('start_time'),
+        supabase.from('appointments')
+          .select('id, booked_via')
+          .eq('clinic_id', staff.clinic_id)
+          .eq('status', 'scheduled'),
+        supabase.from('patients')
+          .select('*', { count: 'exact', head: true })
+          .eq('clinic_id', staff.clinic_id)
+          .eq('is_active', true)
+      ])
+
+      setAppointments(apts || [])
+      const ai = (allApts || []).filter(a => a.booked_via === 'web_agent').length
+      setStats({ today: (apts || []).length, ai_booked: ai, patients: count || 0 })
+      setLoading(false)
+    }
+    init()
   }, [])
 
   const formatTime = (iso: string) =>
@@ -110,42 +117,42 @@ export default function DashboardPage() {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-        .header { margin-bottom: 28px; }
-        .greeting { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; color: #0F172A; letter-spacing: -0.4px; }
-        .greeting-sub { font-size: 13px; color: #94A3B8; margin-top: 3px; }
-        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
-        .stat-card { background: white; border-radius: 12px; padding: 20px 22px; border: 1px solid #E2E8F0; position: relative; overflow: hidden; transition: box-shadow 0.2s, border-color 0.2s; }
-        .stat-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.06); border-color: #CBD5E1; }
-        .stat-card .accent-line { position: absolute; top: 0; left: 0; right: 0; height: 2px; }
-        .stat-label { font-size: 10.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #94A3B8; margin-bottom: 10px; }
-        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 500; color: #0F172A; letter-spacing: -1px; line-height: 1; margin-bottom: 6px; }
-        .stat-value.highlight { color: #0EA5E9; }
-        .stat-sub { font-size: 12px; color: #94A3B8; }
-        .stat-pill { display: inline-flex; align-items: center; gap: 4px; background: #EFF6FF; border-radius: 20px; padding: 2px 8px; font-size: 10px; font-weight: 600; color: #0EA5E9; margin-top: 4px; }
-        .grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
-        .card { background: white; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; }
-        .card-header { padding: 14px 20px; border-bottom: 1px solid #F1F5F9; display: flex; align-items: center; justify-content: space-between; }
-        .card-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 600; color: #0F172A; }
-        .card-meta { font-size: 11px; color: #CBD5E1; letter-spacing: 0.3px; }
-        .apt-row { display: flex; align-items: center; gap: 12px; padding: 13px 20px; border-bottom: 1px solid #F8FAFC; transition: background 0.12s; }
-        .apt-row:last-child { border-bottom: none; }
-        .apt-row:hover { background: #FAFBFC; }
-        .apt-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94A3B8; width: 64px; flex-shrink: 0; letter-spacing: 0.3px; }
-        .apt-bar { width: 3px; height: 34px; border-radius: 2px; flex-shrink: 0; }
-        .apt-info { flex: 1; }
-        .apt-name { font-size: 14px; font-weight: 500; color: #0F172A; }
-        .apt-type { font-size: 11px; color: #94A3B8; text-transform: capitalize; margin-top: 1px; }
-        .apt-tag { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; letter-spacing: 0.2px; flex-shrink: 0; }
-        .tag-ai { background: #EFF6FF; color: #0EA5E9; }
-        .tag-manual { background: #F8FAFC; color: #CBD5E1; }
-        .feed-item { padding: 12px 20px; border-bottom: 1px solid #F8FAFC; display: flex; gap: 10px; align-items: flex-start; }
-        .feed-item:last-child { border-bottom: none; }
-        .feed-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-        .feed-text { font-size: 12px; color: #475569; line-height: 1.5; }
-        .feed-text strong { color: #0F172A; font-weight: 500; }
-        .feed-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #CBD5E1; margin-top: 3px; }
-        .empty { padding: 40px 20px; text-align: center; color: #CBD5E1; font-size: 13px; }
-        .empty-icon { font-size: 26px; margin-bottom: 8px; opacity: 0.6; }
+        .header{margin-bottom:28px}
+        .greeting{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.4px}
+        .greeting-sub{font-size:13px;color:#94A3B8;margin-top:3px}
+        .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px}
+        .stat-card{background:white;border-radius:12px;padding:20px 22px;border:1px solid #E2E8F0;position:relative;overflow:hidden;transition:box-shadow .2s,border-color .2s}
+        .stat-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.06);border-color:#CBD5E1}
+        .accent-line{position:absolute;top:0;left:0;right:0;height:2px}
+        .stat-label{font-size:10.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#94A3B8;margin-bottom:10px}
+        .stat-value{font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:500;color:#0F172A;letter-spacing:-1px;line-height:1;margin-bottom:6px}
+        .stat-value.highlight{color:#0EA5E9}
+        .stat-sub{font-size:12px;color:#94A3B8}
+        .stat-pill{display:inline-flex;align-items:center;gap:4px;background:#EFF6FF;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;color:#0EA5E9;margin-top:4px}
+        .grid{display:grid;grid-template-columns:1fr 300px;gap:16px}
+        .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden}
+        .card-header{padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
+        .card-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:#0F172A}
+        .card-meta{font-size:11px;color:#CBD5E1;letter-spacing:0.3px}
+        .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC;transition:background .12s}
+        .apt-row:last-child{border-bottom:none}
+        .apt-row:hover{background:#FAFBFC}
+        .apt-time{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94A3B8;width:64px;flex-shrink:0}
+        .apt-bar{width:3px;height:34px;border-radius:2px;flex-shrink:0}
+        .apt-info{flex:1}
+        .apt-name{font-size:14px;font-weight:500;color:#0F172A}
+        .apt-type{font-size:11px;color:#94A3B8;text-transform:capitalize;margin-top:1px}
+        .apt-tag{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;flex-shrink:0}
+        .tag-ai{background:#EFF6FF;color:#0EA5E9}
+        .tag-manual{background:#F8FAFC;color:#CBD5E1}
+        .feed-item{padding:12px 20px;border-bottom:1px solid #F8FAFC;display:flex;gap:10px;align-items:flex-start}
+        .feed-item:last-child{border-bottom:none}
+        .feed-dot{width:6px;height:6px;border-radius:50%;margin-top:5px;flex-shrink:0}
+        .feed-text{font-size:12px;color:#475569;line-height:1.5}
+        .feed-text strong{color:#0F172A;font-weight:500}
+        .feed-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:#CBD5E1;margin-top:3px}
+        .empty{padding:40px 20px;text-align:center;color:#CBD5E1;font-size:13px}
+        .empty-icon{font-size:26px;margin-bottom:8px;opacity:.6}
       `}</style>
 
       <div className="header">
@@ -189,7 +196,7 @@ export default function DashboardPage() {
           ) : appointments.length === 0 ? (
             <div className="empty">
               <div className="empty-icon">📅</div>
-              No appointments today.<br />Open the patient widget to get bookings.
+              No appointments today.
             </div>
           ) : appointments.map(apt => (
             <div key={apt.id} className="apt-row">

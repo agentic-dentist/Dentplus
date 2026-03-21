@@ -331,6 +331,7 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
   })
   const [signature, setSignature] = useState('')
   const [guardianSignature, setGuardianSignature] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     params.then(p => setSlug(p.slug))
@@ -353,10 +354,46 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
       if (patient?.intake_status === 'pending_review' || patient?.intake_status === 'approved') {
         setSubmitted(true)
       }
+      // Store rejection reason if rejected
+      if (patient?.intake_status === 'rejected') {
+        // Allow resubmit - don't set submitted true
+        // Pre-fill name already handled below
+      }
       if (patient?.full_name) setIdentity(prev => ({ ...prev, full_name: patient.full_name }))
     }
     init()
   }, [slug])
+
+  const validateStep = (currentStep: number): boolean => {
+    const newErrors: Record<string, string> = {}
+    const req = lang === 'fr' ? 'Champ obligatoire' : 'Required'
+
+    if (currentStep === 0) {
+      if (!identity.full_name.trim()) newErrors.full_name = req
+      if (!identity.date_of_birth) newErrors.date_of_birth = req
+      if (!identity.phone_primary.trim()) newErrors.phone_primary = req
+      if (!identity.address_line1.trim()) newErrors.address_line1 = req
+      if (!identity.emergency_contact_name.trim()) newErrors.emergency_contact_name = req
+      if (!identity.emergency_contact_phone.trim()) newErrors.emergency_contact_phone = req
+      if (identity.is_minor && !identity.guardian_name.trim()) newErrors.guardian_name = req
+      if (identity.is_minor && !identity.guardian_phone.trim()) newErrors.guardian_phone = req
+    }
+
+    if (currentStep === 1) {
+      if (hasInsurance && !primaryIns.provider_name.trim()) newErrors.provider_name = req
+      if (hasInsurance && !primaryIns.policy_number.trim()) newErrors.policy_number = req
+    }
+
+    if (currentStep === 4) {
+      if (!consents.consent_treatment) newErrors.consent_treatment = req
+      if (!consents.consent_pipeda) newErrors.consent_pipeda = req
+      if (!signature.trim()) newErrors.signature = req
+      if (identity.is_minor && !guardianSignature.trim()) newErrors.guardian_signature = req
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   const submitIntake = async () => {
     if (!signature) return
@@ -490,6 +527,8 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
         .consent-text { font-size: 14px; color: #0F172A; line-height: 1.5; }
         .required-tag { font-size: 10px; font-weight: 600; color: #F87171; text-transform: uppercase; }
         .sig-note { font-size: 12px; color: #94A3B8; margin-top: 8px; line-height: 1.5; }
+        .field-error { font-size: 11px; color: #F43F5E; margin-top: 4px; font-weight: 500; }
+        input.error, select.error, textarea.error { border-color: #F43F5E !important; }
         .footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 28px; }
         .btn { padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; border: none; transition: all 0.15s; }
         .btn-back { background: #F8FAFC; color: #475569; border: 1.5px solid #E2E8F0; }
@@ -525,11 +564,11 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
             <div className="card">
               <div className="grid-2">
                 <div className="field"><label>{t.full_name} *</label>
-                  <input value={identity.full_name} onChange={e => setIdentity(p => ({ ...p, full_name: e.target.value }))} /></div>
+                  <input className={errors.full_name ? 'error' : ''} value={identity.full_name} onChange={e => setIdentity(p => ({ ...p, full_name: e.target.value }))} />{errors.full_name && <div className="field-error">{errors.full_name}</div>}</div>
                 <div className="field"><label>{t.preferred_name}</label>
                   <input value={identity.preferred_name} onChange={e => setIdentity(p => ({ ...p, preferred_name: e.target.value }))} /></div>
                 <div className="field"><label>{t.dob} *</label>
-                  <input type="date" value={identity.date_of_birth} onChange={e => setIdentity(p => ({ ...p, date_of_birth: e.target.value }))} /></div>
+                  <input type="date" className={errors.date_of_birth ? 'error' : ''} value={identity.date_of_birth} onChange={e => setIdentity(p => ({ ...p, date_of_birth: e.target.value }))} />{errors.date_of_birth && <div className="field-error">{errors.date_of_birth}</div>}</div>
                 <div className="field"><label>{t.gender}</label>
                   <select value={identity.gender} onChange={e => setIdentity(p => ({ ...p, gender: e.target.value }))}>
                     <option value="">—</option>
@@ -552,7 +591,7 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
             <div className="card">
               <div className="card-title">Address</div>
               <div className="field"><label>{t.address} *</label>
-                <input value={identity.address_line1} onChange={e => setIdentity(p => ({ ...p, address_line1: e.target.value }))} /></div>
+                <input className={errors.address_line1 ? 'error' : ''} value={identity.address_line1} onChange={e => setIdentity(p => ({ ...p, address_line1: e.target.value }))} />{errors.address_line1 && <div className="field-error">{errors.address_line1}</div>}</div>
               <div className="field"><label>{t.address2}</label>
                 <input value={identity.address_line2} onChange={e => setIdentity(p => ({ ...p, address_line2: e.target.value }))} /></div>
               <div className="grid-2">
@@ -567,7 +606,7 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
               <div className="card-title">Phone</div>
               <div className="grid-2">
                 <div className="field"><label>{t.phone_primary} *</label>
-                  <input value={identity.phone_primary} onChange={e => setIdentity(p => ({ ...p, phone_primary: e.target.value }))} placeholder="514-555-0100" /></div>
+                  <input className={errors.phone_primary ? 'error' : ''} value={identity.phone_primary} onChange={e => setIdentity(p => ({ ...p, phone_primary: e.target.value }))} placeholder="514-555-0100" />{errors.phone_primary && <div className="field-error">{errors.phone_primary}</div>}</div>
                 <div className="field"><label>{t.phone_secondary}</label>
                   <input value={identity.phone_secondary} onChange={e => setIdentity(p => ({ ...p, phone_secondary: e.target.value }))} /></div>
               </div>
@@ -577,9 +616,9 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
               <div className="card-title">Emergency contact</div>
               <div className="grid-2">
                 <div className="field"><label>{t.emergency_name} *</label>
-                  <input value={identity.emergency_contact_name} onChange={e => setIdentity(p => ({ ...p, emergency_contact_name: e.target.value }))} /></div>
+                  <input className={errors.emergency_contact_name ? 'error' : ''} value={identity.emergency_contact_name} onChange={e => setIdentity(p => ({ ...p, emergency_contact_name: e.target.value }))} />{errors.emergency_contact_name && <div className="field-error">{errors.emergency_contact_name}</div>}</div>
                 <div className="field"><label>{t.emergency_phone} *</label>
-                  <input value={identity.emergency_contact_phone} onChange={e => setIdentity(p => ({ ...p, emergency_contact_phone: e.target.value }))} /></div>
+                  <input className={errors.emergency_contact_phone ? 'error' : ''} value={identity.emergency_contact_phone} onChange={e => setIdentity(p => ({ ...p, emergency_contact_phone: e.target.value }))} />{errors.emergency_contact_phone && <div className="field-error">{errors.emergency_contact_phone}</div>}</div>
                 <div className="field"><label>{t.emergency_rel}</label>
                   <input value={identity.emergency_contact_relationship} onChange={e => setIdentity(p => ({ ...p, emergency_contact_relationship: e.target.value }))} /></div>
               </div>
@@ -916,9 +955,9 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
             <div className="card">
               <div className="field">
                 <label>{t.signature_label} *</label>
-                <input value={signature} onChange={e => setSignature(e.target.value)}
+                <input className={errors.signature ? 'error' : ''} value={signature} onChange={e => setSignature(e.target.value)}
                   placeholder={t.signature_placeholder}
-                  style={{ fontStyle: signature ? 'italic' : 'normal', fontSize: signature ? '16px' : '14px' }} />
+                  style={{ fontStyle: signature ? 'italic' : 'normal', fontSize: signature ? '16px' : '14px' }} />{errors.signature && <div className="field-error">{errors.signature}</div>}
                 <div className="sig-note">{t.signature_note}</div>
               </div>
               {identity.is_minor && (
@@ -938,11 +977,11 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
             <button className="btn btn-back" onClick={() => setStep(s => s - 1)}>{t.back}</button>
           )}
           {step < 4 ? (
-            <button className="btn btn-next" onClick={() => setStep(s => s + 1)}>{t.next}</button>
+            <button className="btn btn-next" onClick={() => { if (validateStep(step)) setStep(s => s + 1) }}>{t.next}</button>
           ) : (
             <button className="btn btn-next"
-              disabled={!consents.consent_treatment || !consents.consent_pipeda || !signature || loading}
-              onClick={submitIntake}>
+              disabled={loading}
+              onClick={() => { if (validateStep(4)) submitIntake() }}>
               {loading ? t.submitting : t.submit}
             </button>
           )}

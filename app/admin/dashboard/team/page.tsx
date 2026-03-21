@@ -19,6 +19,7 @@ interface Invite {
   role: string
   status: string
   expires_at: string
+  token: string
 }
 
 const ROLES = ['owner', 'dentist', 'hygienist', 'receptionist', 'billing']
@@ -42,6 +43,7 @@ export default function TeamPage() {
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const [inviteLink, setInviteLink] = useState('')
   const supabase = createClient()
 
   useEffect(() => {
@@ -68,22 +70,41 @@ export default function TeamPage() {
     if (!inviteEmail) { setError('Email is required.'); return }
     setSending(true)
     setError('')
+    setInviteLink('')
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: owner } = await supabase.from('clinic_owners').select('id').eq('auth_id', user.id).single()
+    const { data: owner } = await supabase
+      .from('clinic_owners')
+      .select('id')
+      .eq('auth_id', user.id)
+      .single()
+
     if (!owner) return
 
-    const { data, error: inviteError } = await supabase.from('staff_invites').insert({
-      clinic_id: clinicId,
-      invited_by: owner.id,
-      email: inviteEmail,
-      full_name: inviteName || null,
-      role: inviteRole
-    }).select().single()
+    const { data, error: inviteError } = await supabase
+      .from('staff_invites')
+      .insert({
+        clinic_id: clinicId,
+        invited_by: owner.id,
+        email: inviteEmail,
+        full_name: inviteName || null,
+        role: inviteRole
+      })
+      .select()
+      .single()
 
-    if (inviteError) { setError('Failed to create invite.'); setSending(false); return }
+    if (inviteError || !data) {
+      setError('Failed to create invite.')
+      setSending(false)
+      return
+    }
+
+    // Generate invite URL and display it for manual sharing
+    // Phase 2 will send this automatically via email (Resend)
+    const url = `${window.location.origin}/invite/${data.token}`
+    setInviteLink(url)
 
     setInvites(prev => [data, ...prev])
     setInviteEmail('')
@@ -91,6 +112,10 @@ export default function TeamPage() {
     setSent(true)
     setSending(false)
     setTimeout(() => setSent(false), 3000)
+  }
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(inviteLink)
   }
 
   return (
@@ -111,6 +136,13 @@ export default function TeamPage() {
         .invite-btn.sent { background: #10B981; }
         .invite-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .error { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #DC2626; margin-top: 8px; }
+        .invite-link-box { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 12px 14px; margin-top: 14px; }
+        .invite-link-label { font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 6px; letter-spacing: 0.3px; }
+        .invite-link-row { display: flex; align-items: center; gap: 8px; }
+        .invite-link-url { font-size: 12px; color: #14532D; font-family: monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: white; border: 1px solid #BBF7D0; border-radius: 6px; padding: 6px 10px; }
+        .copy-btn { padding: 6px 12px; background: #16A34A; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+        .copy-btn:hover { background: #15803D; }
+        .invite-link-note { font-size: 11px; color: #166534; margin-top: 6px; opacity: 0.7; }
         .staff-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #F8FAFC; }
         .staff-row:last-child { border-bottom: none; }
         .avatar { width: 36px; height: 36px; border-radius: 50%; background: #F1F5F9; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #64748B; flex-shrink: 0; }
@@ -152,6 +184,16 @@ export default function TeamPage() {
           </button>
         </div>
         {error && <div className="error">{error}</div>}
+        {inviteLink && (
+          <div className="invite-link-box">
+            <div className="invite-link-label">Invite link ready — share this with your staff member</div>
+            <div className="invite-link-row">
+              <div className="invite-link-url">{inviteLink}</div>
+              <button className="copy-btn" onClick={copyLink}>Copy link</button>
+            </div>
+            <div className="invite-link-note">Expires in 7 days · Email sending coming in Phase 2</div>
+          </div>
+        )}
       </div>
 
       <div className="section">
@@ -160,7 +202,7 @@ export default function TeamPage() {
           <div className="empty">No staff members yet</div>
         ) : staff.map(s => (
           <div key={s.id} className="staff-row">
-            <div className="avatar">{s.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</div>
+            <div className="avatar">{s.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}</div>
             <div className="staff-info">
               <div className="staff-name">{s.full_name}</div>
               <div className="staff-email">{s.email}</div>
