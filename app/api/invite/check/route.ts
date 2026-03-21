@@ -9,18 +9,30 @@ export async function GET(request: Request) {
 
   const db = createServerClient()
 
+  // Get invite first
   const { data: invite } = await db
     .from('staff_invites')
-    .select('id, email, full_name, role, status, expires_at, clinic_id, clinics(name), clinic_settings(slug)')
+    .select('id, email, full_name, role, status, expires_at, clinic_id, token')
     .eq('token', token)
     .single()
 
   if (!invite) return NextResponse.json({ valid: false, error: 'Invite not found.' }, { status: 404 })
   if (invite.status !== 'pending') return NextResponse.json({ valid: false, error: 'This invite has already been used.' }, { status: 400 })
-  if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ valid: false, error: 'This invite has expired. Please ask the clinic to resend it.' }, { status: 400 })
+  if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ valid: false, error: 'This invite has expired. Ask the clinic to resend it.' }, { status: 400 })
 
-  const clinic = Array.isArray(invite.clinics) ? invite.clinics[0] : invite.clinics
-  const settings = Array.isArray(invite.clinic_settings) ? invite.clinic_settings[0] : invite.clinic_settings
+  // Get clinic name separately
+  const { data: clinic } = await db
+    .from('clinics')
+    .select('name')
+    .eq('id', invite.clinic_id)
+    .single()
+
+  // Get clinic slug separately
+  const { data: settings } = await db
+    .from('clinic_settings')
+    .select('slug')
+    .eq('clinic_id', invite.clinic_id)
+    .single()
 
   return NextResponse.json({
     valid: true,
@@ -28,8 +40,8 @@ export async function GET(request: Request) {
       email: invite.email,
       full_name: invite.full_name,
       role: invite.role,
-      clinic_name: (clinic as { name: string })?.name || 'Clinic',
-      slug: (settings as { slug: string })?.slug || 'demo'
+      clinic_name: clinic?.name || 'Your clinic',
+      slug: settings?.slug || 'demo'
     }
   })
 }
