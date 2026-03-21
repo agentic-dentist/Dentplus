@@ -95,38 +95,83 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
   const intakeStatus = patientInfo?.intake_status || 'incomplete'
 
+  const NAV = [
+    { icon: '▦', label: 'Appointments', key: 'appointments' },
+    { icon: '◈', label: 'My info', key: 'profile' },
+    { icon: '◷', label: 'Waitlist', key: 'waiting' },
+  ]
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'DM Sans',sans-serif;background:#F8FAFC}
-        .shell{max-width:680px;margin:0 auto;padding:0 0 80px;min-height:100vh}
-        .topbar{background:white;border-bottom:1px solid #E2E8F0;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-        .clinic-name{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0F172A}
-        .patient-name{font-size:13px;color:#64748B}
-        .signout{font-size:12px;color:#94A3B8;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
-        .signout:hover{color:#64748B}
-        .hero{background:#0F172A;padding:28px 24px;color:white}
-        .hero-greeting{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:4px}
-        .hero-sub{font-size:13px;color:rgba(148,163,184,0.8);margin-bottom:20px}
-        .hero-btns{display:flex;flex-direction:column;gap:10px}
-        .book-btn{display:inline-flex;align-items:center;gap:8px;background:#0EA5E9;color:white;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;transition:background .15s;width:fit-content}
-        .book-btn:hover{background:#0284C7}
-        .intake-btn{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.1);color:white;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;border:1px solid rgba(255,255,255,0.2);cursor:pointer;transition:background .15s;width:fit-content}
-        .intake-btn:hover{background:rgba(255,255,255,0.18)}
-        .intake-pending{font-size:13px;color:rgba(251,191,36,0.9);display:flex;align-items:center;gap:6px}
-        .intake-approved{font-size:13px;color:#4ADE80;display:flex;align-items:center;gap:6px}
-        .intake-banner{background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);border-radius:10px;padding:14px 16px;margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-        .intake-banner-text{font-size:13px;color:rgba(255,255,255,0.9);line-height:1.5}
-        .intake-banner-title{font-weight:600;margin-bottom:2px}
-        .tabs{display:flex;border-bottom:1px solid #E2E8F0;background:white;padding:0 24px}
-        .tab-btn{padding:14px 16px;font-size:13px;font-weight:500;color:#94A3B8;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;margin-bottom:-1px}
-        .tab-btn.active{color:#0F172A;border-bottom-color:#0EA5E9}
-        .content{padding:24px}
-        .section-title{font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;margin-bottom:12px}
-        .apt-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:16px 18px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
-        .apt-bar{width:3px;height:40px;border-radius:2px;flex-shrink:0}
+        body{font-family:'DM Sans',sans-serif;background:#F0F4F8;color:#0F172A}
+
+        .layout{display:flex;min-height:100vh}
+
+        /* ── Sidebar ── */
+        .sidebar{width:240px;background:#0F172A;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50}
+        .logo-area{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.06)}
+        .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+        .logo-icon{width:30px;height:30px;background:#0EA5E9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px}
+        .logo-text{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#F8FAFC;letter-spacing:-0.3px}
+        .logo-sub{font-size:11px;color:rgba(148,163,184,0.5);padding-left:40px;margin-top:2px}
+        .nav{padding:12px 10px;flex:1}
+        .nav-label{font-size:9.5px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:rgba(148,163,184,0.25);padding:10px 10px 6px}
+        .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;color:rgba(148,163,184,0.5);font-size:13px;cursor:pointer;margin-bottom:1px;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;position:relative}
+        .nav-item:hover{background:rgba(255,255,255,0.05);color:#CBD5E1}
+        .nav-item.active{background:rgba(14,165,233,0.1);color:#0EA5E9;font-weight:500}
+        .nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:55%;background:#0EA5E9;border-radius:0 2px 2px 0}
+        .nav-icon{font-size:13px;width:18px;text-align:center}
+
+        /* Intake status in sidebar */
+        .intake-sidebar{margin:0 12px 12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:all .15s;border:none;width:calc(100% - 24px);text-align:left;font-family:'DM Sans',sans-serif}
+        .intake-sidebar.incomplete{background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25)}
+        .intake-sidebar.pending{background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15)}
+        .intake-sidebar.approved{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)}
+        .intake-sidebar.rejected{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2)}
+        .intake-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;margin-right:6px}
+        .intake-label{font-size:11px;font-weight:600;letter-spacing:0.3px}
+
+        .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.06)}
+        .patient-name{font-size:13px;color:#CBD5E1;font-weight:500;margin-bottom:2px}
+        .signout{font-size:12px;color:rgba(148,163,184,0.4);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;transition:color .15s}
+        .signout:hover{color:#94A3B8}
+
+        .book-btn-sidebar{margin:0 12px 12px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:8px;color:#0EA5E9;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
+        .book-btn-sidebar:hover{background:rgba(14,165,233,0.14)}
+        .book-dot{width:5px;height:5px;border-radius:50%;background:#0EA5E9;box-shadow:0 0 6px rgba(14,165,233,0.8)}
+
+        /* ── Main content ── */
+        .main{flex:1;margin-left:240px;padding:36px 40px;min-height:100vh}
+
+        .page-header{margin-bottom:28px}
+        .page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.4px}
+        .page-sub{font-size:13px;color:#94A3B8;margin-top:3px}
+
+        /* Intake banner */
+        .intake-banner{background:white;border:1.5px solid #FDE68A;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+        .intake-banner-icon{font-size:20px;flex-shrink:0}
+        .intake-banner-text{flex:1}
+        .intake-banner-title{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:2px}
+        .intake-banner-sub{font-size:12px;color:#64748B}
+        .intake-banner-btn{padding:9px 18px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:background .15s}
+        .intake-banner-btn:hover{background:#1E293B}
+
+        .intake-approved-banner{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#166534;font-weight:500}
+
+        .intake-pending-banner{background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#92400E;font-weight:500}
+
+        /* Cards */
+        .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
+        .card-header{padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
+        .card-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:#0F172A}
+        .card-meta{font-size:11px;color:#CBD5E1}
+
+        .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC;transition:background .12s}
+        .apt-row:last-child{border-bottom:none}
+        .apt-bar{width:3px;height:36px;border-radius:2px;flex-shrink:0}
         .apt-info{flex:1}
         .apt-type{font-size:14px;font-weight:500;color:#0F172A;text-transform:capitalize}
         .apt-time{font-size:12px;color:#64748B;margin-top:2px}
@@ -134,80 +179,134 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
         .badge-past{background:#F8FAFC;color:#CBD5E1}
         .badge-cancelled{background:#FEF2F2;color:#F87171}
+
         .profile-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
         .profile-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F8FAFC}
         .profile-row:last-child{border-bottom:none}
         .profile-label{font-size:12px;color:#94A3B8;font-weight:500}
         .profile-value{font-size:14px;color:#0F172A}
-        .intake-status-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+
+        .status-row{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;margin-top:16px}
         .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-        .waitlist-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:24px;text-align:center}
+        .status-label{font-size:14px;font-weight:500;color:#0F172A;text-transform:capitalize}
+        .status-sub{font-size:12px;color:#94A3B8;margin-top:2px}
+        .start-btn{padding:8px 16px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
+
+        .waitlist-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:32px;text-align:center}
         .waitlist-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:8px}
-        .waitlist-sub{font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.6}
+        .waitlist-sub{font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.6;max-width:360px;margin-left:auto;margin-right:auto}
         .waitlist-btn{display:inline-block;padding:10px 20px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none}
-        .empty{text-align:center;padding:40px 20px;color:#CBD5E1;font-size:13px}
-        .empty-icon{font-size:28px;margin-bottom:8px;opacity:.6}
+
+        .section-title{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;margin-bottom:12px}
+        .empty{padding:32px 20px;text-align:center;color:#CBD5E1;font-size:13px}
+        .empty-icon{font-size:24px;margin-bottom:8px;opacity:.5}
       `}</style>
 
-      <div className="shell">
-        <div className="topbar">
-          <div>
-            <div className="clinic-name">{clinicName}</div>
-            {patientInfo && <div className="patient-name">{patientInfo.full_name}</div>}
+      <div className="layout">
+        {/* Sidebar */}
+        <aside className="sidebar">
+          <div className="logo-area">
+            <div className="logo-mark">
+              <div className="logo-icon">🦷</div>
+              <div className="logo-text">{clinicName || 'DentPlus'}</div>
+            </div>
+            <div className="logo-sub">Patient portal</div>
           </div>
-          <button className="signout" onClick={signOut}>Sign out</button>
-        </div>
 
-        <div className="hero">
-          <div className="hero-greeting">
-            Hello{patientInfo ? `, ${patientInfo.full_name.split(' ')[0]}` : ''} 👋
-          </div>
-          <div className="hero-sub">
-            {upcoming.length > 0
-              ? `You have ${upcoming.length} upcoming appointment${upcoming.length > 1 ? 's' : ''}`
-              : 'No upcoming appointments'}
-          </div>
-          <div className="hero-btns">
-            <button className="book-btn" onClick={() => router.push(`/clinic/${slug}/book`)}>
-              Book an appointment
-            </button>
-
-            {intakeStatus === 'incomplete' && (
-              <button className="intake-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>
-                📋 Complete your patient intake form →
+          <nav className="nav">
+            <div className="nav-label">My account</div>
+            {NAV.map(item => (
+              <button
+                key={item.key}
+                className={`nav-item ${tab === item.key ? 'active' : ''}`}
+                onClick={() => setTab(item.key as typeof tab)}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {item.label}
               </button>
-            )}
-            {intakeStatus === 'pending_review' && (
-              <div className="intake-pending">⏳ Intake form submitted — pending staff review</div>
-            )}
-            {intakeStatus === 'approved' && (
-              <div className="intake-approved">✓ Patient file complete and approved</div>
-            )}
+            ))}
+          </nav>
+
+          {/* Intake status button */}
+          <button
+            className={`intake-sidebar ${intakeStatus === 'approved' ? 'approved' : intakeStatus === 'pending_review' ? 'pending' : intakeStatus === 'rejected' ? 'rejected' : 'incomplete'}`}
+            onClick={() => (intakeStatus === 'incomplete' || intakeStatus === 'rejected') && router.push(`/clinic/${slug}/intake`)}
+            style={{ cursor: (intakeStatus === 'incomplete' || intakeStatus === 'rejected') ? 'pointer' : 'default' }}
+          >
+            <span className="intake-dot" style={{
+              background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : intakeStatus === 'rejected' ? '#F43F5E' : '#F59E0B'
+            }} />
+            <span className="intake-label" style={{
+              color: intakeStatus === 'approved' ? '#065F46' : intakeStatus === 'pending_review' ? '#92400E' : intakeStatus === 'rejected' ? '#9F1239' : '#92400E'
+            }}>
+              {intakeStatus === 'approved' ? '✓ File approved' : intakeStatus === 'pending_review' ? 'Intake pending review' : intakeStatus === 'rejected' ? 'Intake rejected — resubmit' : '→ Complete intake form'}
+            </span>
+          </button>
+
+          <button className="book-btn-sidebar" onClick={() => router.push(`/clinic/${slug}/book`)}>
+            <div className="book-dot" />
+            Book an appointment
+          </button>
+
+          <div className="sidebar-footer">
+            <div className="patient-name">{patientInfo?.full_name || ''}</div>
+            <button className="signout" onClick={signOut}>Sign out</button>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <main className="main">
+          <div className="page-header">
+            <div className="page-title">
+              Hello{patientInfo ? `, ${patientInfo.full_name.split(' ')[0]}` : ''} 👋
+            </div>
+            <div className="page-sub">
+              {upcoming.length > 0
+                ? `You have ${upcoming.length} upcoming appointment${upcoming.length > 1 ? 's' : ''}`
+                : 'No upcoming appointments'}
+            </div>
           </div>
 
+          {/* Intake banners */}
           {intakeStatus === 'incomplete' && (
             <div className="intake-banner">
+              <div className="intake-banner-icon">📋</div>
               <div className="intake-banner-text">
-                <div className="intake-banner-title">Action required</div>
-                Please complete your patient intake form before your first visit. It takes about 5 minutes.
+                <div className="intake-banner-title">Action required — complete your intake form</div>
+                <div className="intake-banner-sub">Required before your first visit. Takes about 5 minutes.</div>
               </div>
-              <button className="intake-btn" style={{ whiteSpace: 'nowrap' }}
-                onClick={() => router.push(`/clinic/${slug}/intake`)}>
-                Start →
+              <button className="intake-banner-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>
+                Start now
               </button>
             </div>
           )}
-        </div>
 
-        <div className="tabs">
-          {(['appointments', 'profile', 'waiting'] as const).map(t => (
-            <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'appointments' ? 'Appointments' : t === 'profile' ? 'My info' : 'Waitlist'}
-            </button>
-          ))}
-        </div>
+          {intakeStatus === 'rejected' && (
+            <div className="intake-banner" style={{ borderColor: '#FECACA' }}>
+              <div className="intake-banner-icon">⚠️</div>
+              <div className="intake-banner-text">
+                <div className="intake-banner-title">Your intake form needs corrections</div>
+                <div className="intake-banner-sub">The clinic has requested changes. Please resubmit.</div>
+              </div>
+              <button className="intake-banner-btn" style={{ background: '#F43F5E' }} onClick={() => router.push(`/clinic/${slug}/intake`)}>
+                Resubmit
+              </button>
+            </div>
+          )}
 
-        <div className="content">
+          {intakeStatus === 'pending_review' && (
+            <div className="intake-pending-banner">
+              ⏳ Your intake form has been submitted and is pending staff review.
+            </div>
+          )}
+
+          {intakeStatus === 'approved' && (
+            <div className="intake-approved-banner">
+              ✓ Your patient file is complete and approved.
+            </div>
+          )}
+
+          {/* Tab content */}
           {loading ? (
             <div className="empty"><div className="empty-icon">⏳</div>Loading...</div>
           ) : tab === 'appointments' ? (
@@ -215,35 +314,41 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
               {upcoming.length > 0 && (
                 <>
                   <div className="section-title">Upcoming</div>
-                  {upcoming.map(apt => (
-                    <div key={apt.id} className="apt-card">
-                      <div className="apt-bar" style={{ background: TYPE_COLOR[apt.appointment_type] || '#E2E8F0' }} />
-                      <div className="apt-info">
-                        <div className="apt-type">{apt.appointment_type}</div>
-                        <div className="apt-time">{formatTime(apt.start_time)}</div>
-                        {apt.reason && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{apt.reason}</div>}
+                  <div className="card">
+                    {upcoming.map(apt => (
+                      <div key={apt.id} className="apt-row">
+                        <div className="apt-bar" style={{ background: TYPE_COLOR[apt.appointment_type] || '#E2E8F0' }} />
+                        <div className="apt-info">
+                          <div className="apt-type">{apt.appointment_type}</div>
+                          <div className="apt-time">{formatTime(apt.start_time)}</div>
+                          {apt.reason && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{apt.reason}</div>}
+                        </div>
+                        <span className="apt-badge badge-upcoming">Scheduled</span>
                       </div>
-                      <span className="apt-badge badge-upcoming">Scheduled</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </>
               )}
 
-              <div className="section-title" style={{ marginTop: upcoming.length > 0 ? '24px' : '0' }}>Past visits</div>
+              <div className="section-title" style={{ marginTop: upcoming.length > 0 ? '20px' : '0' }}>Past visits</div>
               {past.length === 0 ? (
                 <div className="empty"><div className="empty-icon">📋</div>No past visits yet</div>
-              ) : past.map(apt => (
-                <div key={apt.id} className="apt-card">
-                  <div className="apt-bar" style={{ background: apt.status === 'cancelled' ? '#F87171' : '#E2E8F0' }} />
-                  <div className="apt-info">
-                    <div className="apt-type">{apt.appointment_type}</div>
-                    <div className="apt-time">{formatTime(apt.start_time)}</div>
-                  </div>
-                  <span className={`apt-badge ${apt.status === 'cancelled' ? 'badge-cancelled' : 'badge-past'}`}>
-                    {apt.status}
-                  </span>
+              ) : (
+                <div className="card">
+                  {past.map(apt => (
+                    <div key={apt.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: apt.status === 'cancelled' ? '#F87171' : '#E2E8F0' }} />
+                      <div className="apt-info">
+                        <div className="apt-type">{apt.appointment_type}</div>
+                        <div className="apt-time">{formatTime(apt.start_time)}</div>
+                      </div>
+                      <span className={`apt-badge ${apt.status === 'cancelled' ? 'badge-cancelled' : 'badge-past'}`}>
+                        {apt.status}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </>
           ) : tab === 'profile' ? (
             <>
@@ -262,17 +367,15 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                 ))}
               </div>
 
-              <div className="section-title" style={{ marginTop: '20px' }}>Intake form status</div>
-              <div className="intake-status-card">
+              <div className="section-title" style={{ marginTop: '20px' }}>Intake form</div>
+              <div className="status-row">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div className="status-dot" style={{
                     background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : '#CBD5E1'
                   }} />
                   <div>
-                    <div style={{ fontSize: '14px', fontWeight: 500, color: '#0F172A', textTransform: 'capitalize' }}>
-                      {intakeStatus === 'incomplete' ? 'Not started' : intakeStatus.replace('_', ' ')}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '2px' }}>
+                    <div className="status-label">{intakeStatus === 'incomplete' ? 'Not started' : intakeStatus.replace('_', ' ')}</div>
+                    <div className="status-sub">
                       {intakeStatus === 'incomplete' && 'Required before your first visit'}
                       {intakeStatus === 'pending_review' && 'Submitted — awaiting staff review'}
                       {intakeStatus === 'approved' && 'Your patient file is complete'}
@@ -281,15 +384,14 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </div>
                 </div>
                 {(intakeStatus === 'incomplete' || intakeStatus === 'rejected') && (
-                  <button onClick={() => router.push(`/clinic/${slug}/intake`)}
-                    style={{ padding: '8px 16px', background: '#0F172A', color: 'white', borderRadius: '8px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                  <button className="start-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>
                     {intakeStatus === 'rejected' ? 'Resubmit' : 'Start'}
                   </button>
                 )}
               </div>
 
-              <div style={{ fontSize: '12px', color: '#94A3B8', padding: '8px' }}>
-                To update your information, please contact the clinic.
+              <div style={{ fontSize: '12px', color: '#94A3B8', padding: '12px 0' }}>
+                To update your information, please contact the clinic directly.
               </div>
             </>
           ) : (
@@ -298,7 +400,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
               <div className="waitlist-card">
                 <div className="waitlist-title">Get notified of openings</div>
                 <div className="waitlist-sub">
-                  Join the waiting list and our AI agent will notify you automatically when a slot opens that matches your needs.
+                  Join the waiting list and our AI agent will notify you when a slot opens that matches your needs.
                 </div>
                 <button className="waitlist-btn" onClick={() => router.push(`/clinic/${slug}/book?waitlist=true`)}>
                   Join waiting list
@@ -306,7 +408,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
               </div>
             </>
           )}
-        </div>
+        </main>
       </div>
     </>
   )
