@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
@@ -7,7 +6,12 @@ export async function POST(request: Request) {
     const { token, password } = await request.json()
     if (!token || !password) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
-    const db = createServerClient()
+    // Must use service role throughout — invite acceptance is unauthenticated,
+    // anon key + RLS blocks all reads on staff_invites
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
     // Get invite
     const { data: invite } = await db
@@ -20,16 +24,11 @@ export async function POST(request: Request) {
     if (invite.status !== 'pending') return NextResponse.json({ error: 'Invite already used' }, { status: 400 })
     if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 400 })
 
-    // Create auth user using admin client (service role)
-    const adminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+    // Create auth user
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
       email: invite.email,
       password,
-      email_confirm: true  // auto-confirm — they accepted invite via email
+      email_confirm: true
     })
 
     if (authError || !authData.user) {
@@ -47,7 +46,7 @@ export async function POST(request: Request) {
     })
 
     // Mark invite as accepted
-    await db.from('staff_invites').update({ status: 'accepted' }).eq('id', invite.id)
+    await db.from('staff_invites').update({ status: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invite.id)
 
     const settings = Array.isArray(invite.clinic_settings) ? invite.clinic_settings[0] : invite.clinic_settings
     const slug = (settings as { slug: string })?.slug || 'demo'

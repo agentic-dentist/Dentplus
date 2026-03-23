@@ -366,8 +366,9 @@ async function runTool(
           const { data: schedule } = await db
             .from('provider_schedules')
             .select('start_time, end_time')
-            .eq('provider_id', requestedProviderId)
+            .eq('staff_id', requestedProviderId)
             .eq('day_of_week', dayOfWeek)
+            .eq('is_active', true)
             .single()
 
           if (!schedule) {
@@ -419,8 +420,9 @@ async function runTool(
               const { data: schedule } = await db
                 .from('provider_schedules')
                 .select('start_time, end_time')
-                .eq('provider_id', provider.id)
+                .eq('staff_id', provider.id)
                 .eq('day_of_week', dayOfWeek)
+                .eq('is_active', true)
                 .single()
 
               if (!schedule) continue // Not working today
