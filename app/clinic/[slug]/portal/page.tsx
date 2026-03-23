@@ -35,6 +35,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [clinicColor, setClinicColor] = useState('#0EA5E9')
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null)
   const [patientAuthId, setPatientAuthId] = useState<string | null>(null)
+  const [patientId, setPatientId] = useState<string>('')
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
   const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting'>('appointments')
@@ -66,6 +67,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
       if (!account) { router.push(`/clinic/${slug}`); return }
       setClinicId(account.clinic_id)
+      setPatientId(account.patient_id)
 
       // Fetch clinic info separately to avoid join RLS issues
       const [{ data: clinicInfo }, { data: clinicSettings }] = await Promise.all([
@@ -155,11 +157,13 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
   const closeBooking = () => {
     setShowBooking(false)
-    // Reload appointments in case something was booked
-    if (clinicId && patientInfo) {
+    // Reload appointments in case something was booked — always filter by patientId
+    if (clinicId && patientId) {
       const now = new Date().toISOString()
       supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
-        .eq('clinic_id', clinicId).eq('status', 'scheduled')
+        .eq('clinic_id', clinicId)
+        .eq('patient_id', patientId)
+        .eq('status', 'scheduled')
         .gte('start_time', now).order('start_time').limit(5)
         .then(({ data }) => { if (data) setUpcoming(data) })
     }
