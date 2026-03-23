@@ -61,19 +61,27 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
       const { data: account } = await supabase
         .from('patient_accounts')
-        .select('patient_id, clinic_id, clinics(name, primary_color)')
+        .select('patient_id, clinic_id')
         .eq('auth_id', user.id).single()
 
       if (!account) { router.push(`/clinic/${slug}`); return }
-      const clinic = Array.isArray(account.clinics) ? account.clinics[0] : account.clinics
-      setClinicName((clinic as any)?.name || '')
-      setClinicColor((clinic as any)?.primary_color || '#0EA5E9')
       setClinicId(account.clinic_id)
+
+      // Fetch clinic info separately to avoid join RLS issues
+      const [{ data: clinicInfo }, { data: clinicSettings }] = await Promise.all([
+        supabase.from('clinics').select('name').eq('id', account.clinic_id).single(),
+        supabase.from('clinic_settings').select('primary_color').eq('clinic_id', account.clinic_id).single()
+      ])
+
+      setClinicName(clinicInfo?.name || '')
+      setClinicColor(clinicSettings?.primary_color || '#0EA5E9')
 
       const { data: patient } = await supabase
         .from('patients')
         .select('full_name, email, phone_primary, insurance_provider, intake_status')
         .eq('id', account.patient_id).single()
+
+      if (!patient) { router.push(`/clinic/${slug}`); return }
       setPatientInfo(patient)
 
       const now = new Date().toISOString()
