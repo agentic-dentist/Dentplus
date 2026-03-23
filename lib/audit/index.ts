@@ -1,7 +1,6 @@
 import { createServerClient } from '@/lib/supabase/server'
 
 // ─── Audit event types ────────────────────────────────────────────────────────
-
 export type AuditAction =
   | 'patient_lookup'
   | 'patient_lookup_failed'
@@ -19,11 +18,32 @@ export type AuditAction =
   | 'phi_access_denied'
   | 'conversation_started'
   | 'conversation_completed'
+  | 'waitlist_joined'
+  | 'waitlist_removed'
+  | 'waitlist_offered'
+  | 'waitlist_confirmed'
+  | 'waitlist_expired'
+  | 'insurance_validated'
+  | 'insurance_gap_detected'
+  | 'matchmaker_run_started'
+  | 'matchmaker_candidates_scored'
+  | 'matchmaker_no_candidates'
+  | 'outreach_sent'
+  | 'outreach_confirmed'
+  | 'outreach_declined'
+  | 'outreach_expired'
+  | 'outreach_consent_blocked'
+  | 'billing_fee_assessed'
+  | 'billing_fee_waived'
+  | 'billing_plan_offered'
+  | 'triage_completed'
+  | 'escalated_to_human'
+  | 'recall_triggered'
 
 export interface AuditEntry {
   clinic_id: string
   action: AuditAction
-  agent: 'concierge' | 'diagnostician' | 'liaison' | 'auditor' | 'orchestrator' | 'system'
+  agent: 'concierge' | 'diagnostician' | 'liaison' | 'auditor' | 'orchestrator' | 'matchmaker' | 'outreach' | 'billing' | 'insurance_validator' | 'system'
   entity_type?: string
   entity_id?: string
   external_ref?: string      // patient token — never internal id
@@ -33,7 +53,6 @@ export interface AuditEntry {
 }
 
 // ─── Write to audit log (immutable — inserts only) ───────────────────────────
-
 export async function audit(entry: AuditEntry): Promise<void> {
   try {
     const db = createServerClient()
@@ -57,20 +76,18 @@ export async function audit(entry: AuditEntry): Promise<void> {
     })
   } catch (err) {
     // Audit failures must never crash the main flow
-    // Log to console only — never to external services
     console.error('[AUDIT FAILURE]', err)
   }
 }
 
 // ─── Convenience wrappers ─────────────────────────────────────────────────────
-
 export const auditPatientLookup = (clinicId: string, query: string, found: boolean) =>
   audit({
     clinic_id: clinicId,
     action: found ? 'patient_lookup' : 'patient_lookup_failed',
     agent: 'concierge',
     entity_type: 'patient',
-    metadata: { query_length: query.length }, // never log the actual query — could contain PHI
+    metadata: { query_length: query.length },
     success: found
   })
 
