@@ -100,6 +100,43 @@ const TOOLS: Anthropic.Tool[] = [
       },
       required: ['full_name', 'phone']
     }
+  },
+  {
+    name: 'join_waitlist',
+    description: 'Add a patient to the waitlist when no suitable slots are available, or when the patient explicitly asks to join the waitlist.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        external_ref: { type: 'string', description: 'Patient token from lookup_patient or get_patient_context' },
+        appointment_type: {
+          type: 'string',
+          enum: ['cleaning', 'checkup', 'emergency', 'filling', 'consultation'],
+          description: 'Type of appointment they are waiting for'
+        },
+        urgency: {
+          type: 'string',
+          enum: ['routine', 'urgent'],
+          description: 'How urgently they need the appointment'
+        },
+        any_time: {
+          type: 'string',
+          enum: ['true', 'false'],
+          description: 'Whether any day/time works for the patient'
+        },
+        preferred_days: {
+          type: 'array',
+          items: { type: 'string', enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] },
+          description: 'Preferred days if any_time is false'
+        },
+        preferred_times: {
+          type: 'array',
+          items: { type: 'string', enum: ['morning', 'afternoon', 'evening'] },
+          description: 'Preferred times of day if any_time is false'
+        },
+        notes: { type: 'string', description: 'Any additional notes from the patient' }
+      },
+      required: ['external_ref', 'appointment_type', 'urgency']
+    }
   }
 ]
 
@@ -240,51 +277,197 @@ async function runTool(
 
     case 'get_available_slots': {
       const duration = input.appointment_type === 'filling' ? 90 : 60
+      const durationHours = Math.ceil(duration / 60)
       const isEmergency = input.urgency === 'emergency'
-      const providerId = input.provider_id || null
-      const slots = []
+      const requestedProviderId = input.provider_id || null
+      const targetSlots = isEmergency ? 3 : 6
+      const slots: Array<{
+        datetime: string
+        display: string
+        duration_minutes: number
+        provider_id?: string
+        provider_name?: string
+      }> = []
       let daysChecked = 0
+
+      // Helper: parse "09:00:00" or "09:00" → integer hour
+      const parseHour = (t: string): number => parseInt(t.split(':')[0], 10)
+
+      // Helper: build a Montreal-anchored UTC slot start from local date + hour
+      const buildSlotStart = (dateObj: Date, hour: number): Date => {
+        const year = dateObj.getFullYear()
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+        const day = String(dateObj.getDate()).padStart(2, '0')
+        const hourStr = String(hour).padStart(2, '0')
+        const testDate = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
+        const montrealStr = testDate.toLocaleString('en-US', { timeZone: 'America/Toronto', hour12: false, hour: '2-digit', minute: '2-digit' })
+        const utcStr    = testDate.toLocaleString('en-US', { timeZone: 'UTC',             hour12: false, hour: '2-digit', minute: '2-digit' })
+        const offsetHours = parseInt(utcStr.split(':')[0]) % 24 - parseInt(montrealStr.split(':')[0]) % 24
+        const slotStart = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
+        slotStart.setHours(slotStart.getHours() + offsetHours)
+        return slotStart
+      }
+
+      // Helper: check for booking conflict for a specific provider
+      const hasConflict = async (providerId: string, slotStart: Date, slotEnd: Date): Promise<boolean> => {
+        const { data } = await db
+          .from('appointments')
+          .select('id')
+          .eq('clinic_id', clinicId)
+          .eq('provider_id', providerId)
+          .eq('status', 'scheduled')
+          .lt('start_time', slotEnd.toISOString())
+          .gt('end_time', slotStart.toISOString())
+          .limit(1)
+        return !!(data && data.length > 0)
+      }
+
+      // ── If no provider given, look up preferred role from procedure_provider_rules ──
+      let preferredRole: string | null = null
+      let roleProviders: { id: string; full_name: string }[] = []
+
+      if (!requestedProviderId) {
+        const { data: rule } = await db
+          .from('procedure_provider_rules')
+          .select('preferred_role')
+          .eq('clinic_id', clinicId)
+          .eq('appointment_type', input.appointment_type)
+          .single()
+
+        if (rule?.preferred_role) {
+          preferredRole = rule.preferred_role
+          const { data: providers } = await db
+            .from('staff_accounts')
+            .select('id, full_name')
+            .eq('clinic_id', clinicId)
+            .eq('role', rule.preferred_role)
+            .eq('is_active', true)
+          roleProviders = providers || []
+        }
+      }
 
       const nowInMontreal = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Toronto' }))
       const checkDate = new Date(nowInMontreal)
       if (!isEmergency) checkDate.setDate(checkDate.getDate() + 1)
       checkDate.setHours(0, 0, 0, 0)
 
-      while (slots.length < (isEmergency ? 3 : 6) && daysChecked < 14) {
-        const dayOfWeek = checkDate.getDay()
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      while (slots.length < targetSlots && daysChecked < 21) {
+        const dayOfWeek = checkDate.getDay() // 0 = Sun, 6 = Sat
+
+        // Always skip weekends
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          checkDate.setDate(checkDate.getDate() + 1)
+          daysChecked++
+          continue
+        }
+
+        if (requestedProviderId) {
+          // ── PATH A: Specific provider requested — enforce their schedule ──
+          const { data: schedule } = await db
+            .from('provider_schedules')
+            .select('start_time, end_time')
+            .eq('provider_id', requestedProviderId)
+            .eq('day_of_week', dayOfWeek)
+            .single()
+
+          if (!schedule) {
+            // Provider not working this day — skip entirely
+            checkDate.setDate(checkDate.getDate() + 1)
+            daysChecked++
+            continue
+          }
+
+          const pStart = parseHour(schedule.start_time)
+          const pEnd   = parseHour(schedule.end_time)
+
+          // Generate on-the-hour candidates strictly within provider window
+          for (let hour = pStart; hour + durationHours <= pEnd; hour++) {
+            // For emergency, cap at early morning hours
+            if (isEmergency && hour > 11) break
+
+            const slotStart = buildSlotStart(checkDate, hour)
+            const slotEnd   = new Date(slotStart.getTime() + duration * 60000)
+
+            if (slotStart <= new Date()) continue
+
+            if (!(await hasConflict(requestedProviderId, slotStart, slotEnd))) {
+              slots.push({
+                datetime: slotStart.toISOString(),
+                display: slotStart.toLocaleString('en-CA', {
+                  weekday: 'long', month: 'long', day: 'numeric',
+                  hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                }),
+                duration_minutes: duration,
+                provider_id: requestedProviderId
+              })
+              if (slots.length >= targetSlots) break
+            }
+          }
+
+        } else if (roleProviders.length > 0) {
+          // ── PATH B: No provider specified — find any available provider of the right role ──
+          const candidateHours = isEmergency ? [8, 9, 10, 11] : [9, 10, 11, 14, 15, 16]
+
+          for (const hour of candidateHours) {
+            const slotStart = buildSlotStart(checkDate, hour)
+            const slotEnd   = new Date(slotStart.getTime() + duration * 60000)
+
+            if (slotStart <= new Date()) continue
+
+            // Try each provider of the right role — first available wins
+            for (const provider of roleProviders) {
+              const { data: schedule } = await db
+                .from('provider_schedules')
+                .select('start_time, end_time')
+                .eq('provider_id', provider.id)
+                .eq('day_of_week', dayOfWeek)
+                .single()
+
+              if (!schedule) continue // Not working today
+
+              const pStart = parseHour(schedule.start_time)
+              const pEnd   = parseHour(schedule.end_time)
+
+              // Slot must fall within provider's working hours
+              if (hour < pStart || hour + durationHours > pEnd) continue
+
+              if (!(await hasConflict(provider.id, slotStart, slotEnd))) {
+                slots.push({
+                  datetime: slotStart.toISOString(),
+                  display: slotStart.toLocaleString('en-CA', {
+                    weekday: 'long', month: 'long', day: 'numeric',
+                    hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                  }),
+                  duration_minutes: duration,
+                  provider_id: provider.id,
+                  provider_name: provider.full_name
+                })
+                break // One slot per time block — move to next hour
+              }
+            }
+
+            if (slots.length >= targetSlots) break
+          }
+
+        } else {
+          // ── PATH C: Fallback — no schedules configured, use hardcoded clinic hours ──
+          // This keeps existing behaviour intact so nothing breaks before schedules are seeded
           const hours = isEmergency ? [8, 9, 10, 11] : [9, 10, 11, 14, 15, 16]
+
           for (const hour of hours) {
-            const year = checkDate.getFullYear()
-            const month = String(checkDate.getMonth() + 1).padStart(2, '0')
-            const day = String(checkDate.getDate()).padStart(2, '0')
-            const hourStr = String(hour).padStart(2, '0')
-            const testDate = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
-            const montrealStr = testDate.toLocaleString('en-US', { timeZone: 'America/Toronto', hour12: false, hour: '2-digit', minute: '2-digit' })
-            const utcStr = testDate.toLocaleString('en-US', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit' })
-            const montrealHour = parseInt(montrealStr.split(':')[0]) % 24
-            const utcHour = parseInt(utcStr.split(':')[0]) % 24
-            const offsetHours = utcHour - montrealHour
-            const slotStart = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
-            slotStart.setHours(slotStart.getHours() + offsetHours)
-            const slotEnd = new Date(slotStart.getTime() + duration * 60000)
+            const slotStart = buildSlotStart(checkDate, hour)
+            const slotEnd   = new Date(slotStart.getTime() + duration * 60000)
 
-            if (slotStart <= new Date()) { continue }
+            if (slotStart <= new Date()) continue
 
-            // Build conflict query — filter by provider if specified
-            let conflictQuery = db
+            const { data: conflict } = await db
               .from('appointments')
               .select('id')
               .eq('clinic_id', clinicId)
               .eq('status', 'scheduled')
               .lt('start_time', slotEnd.toISOString())
               .gt('end_time', slotStart.toISOString())
-
-            if (providerId) {
-              conflictQuery = conflictQuery.eq('provider_id', providerId)
-            }
-
-            const { data: conflict } = await conflictQuery.limit(1)
+              .limit(1)
 
             if (!conflict || conflict.length === 0) {
               slots.push({
@@ -295,10 +478,11 @@ async function runTool(
                 }),
                 duration_minutes: duration
               })
-              if (slots.length >= (isEmergency ? 3 : 6)) break
+              if (slots.length >= targetSlots) break
             }
           }
         }
+
         checkDate.setDate(checkDate.getDate() + 1)
         daysChecked++
       }
@@ -307,11 +491,19 @@ async function runTool(
         clinic_id: clinicId,
         action: 'slots_queried',
         agent: 'concierge',
-        metadata: { appointment_type: input.appointment_type, slots_found: slots.length },
+        metadata: {
+          appointment_type: input.appointment_type,
+          slots_found: slots.length,
+          provider_id: requestedProviderId,
+          preferred_role: preferredRole
+        },
         success: true
       })
 
-      return JSON.stringify({ slots })
+      return JSON.stringify({
+        slots,
+        ...(preferredRole ? { preferred_role: preferredRole } : {})
+      })
     }
 
     case 'book_appointment': {
@@ -523,7 +715,7 @@ TOOL USAGE — strictly enforced:
 2. When patient is identified: call get_patient_context immediately — before responding to their request.
 3. Use the context to answer proactively. If they say "cancel my appointment", you already know which ones they have — list them and ask which one.
 4. For billing/insurance questions: get_patient_context has insurance info. Give what you know, note that exact coverage is confirmed by the clinic.
-5. To book: ALWAYS call get_available_slots first. If patient context includes assigned_dentist or assigned_hygienist, pass their id as provider_id to get_available_slots — say "I'll check Dr. X's availability for you." Present the options, wait for patient to pick a specific slot, then call book_appointment. NEVER book without explicit patient confirmation of a specific time.
+5. To book: ALWAYS call get_available_slots first. If patient context includes assigned_dentist or assigned_hygienist, pass their id as provider_id to get_available_slots — say "I'll check Dr. X's availability for you." Each slot returned now includes a provider_id (and sometimes provider_name). Present the options to the patient, wait for them to pick a specific slot, then call book_appointment with that slot's provider_id. NEVER book without explicit patient confirmation of a specific time.
 6. To cancel: call cancel_appointment with the appointment ID from context.
 7. To reschedule: cancel first, then get_available_slots, then book.
 8. If no slots are available OR patient asks to join the waitlist: ask them (a) what procedure they need, (b) urgent or routine, (c) any day/time preference or any time works. Then call join_waitlist. Never add to waitlist without confirming appointment type and urgency first.
