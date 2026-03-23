@@ -6,16 +6,15 @@ export async function POST(request: Request) {
     const { token, password } = await request.json()
     if (!token || !password) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
-    // Must use service role — invite acceptance is unauthenticated
     const db = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Get invite — log error so we can diagnose if this fails
+    // Fetch invite — no nested clinic_settings join (no FK relationship)
     const { data: invite, error: inviteError } = await db
       .from('staff_invites')
-      .select('id, email, full_name, role, status, expires_at, clinic_id, clinic_settings(slug)')
+      .select('id, email, full_name, role, status, expires_at, clinic_id')
       .eq('token', token)
       .single()
 
@@ -26,6 +25,13 @@ export async function POST(request: Request) {
     if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
     if (invite.status !== 'pending') return NextResponse.json({ error: 'Invite already used' }, { status: 400 })
     if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 400 })
+
+    // Fetch slug separately
+    const { data: settings } = await db
+      .from('clinic_settings')
+      .select('slug')
+      .eq('clinic_id', invite.clinic_id)
+      .single()
 
     // Create auth user
     const { data: authData, error: authError } = await db.auth.admin.createUser({
@@ -53,13 +59,10 @@ export async function POST(request: Request) {
       console.error('[INVITE ACCEPT] staff insert error:', JSON.stringify(staffError))
     }
 
-    // Mark invite as accepted — no accepted_at column in schema
+    // Mark invite as accepted
     await db.from('staff_invites').update({ status: 'accepted' }).eq('id', invite.id)
 
-    const settings = Array.isArray(invite.clinic_settings) ? invite.clinic_settings[0] : invite.clinic_settings
-    const slug = (settings as { slug: string })?.slug || 'demo'
-
-    return NextResponse.json({ success: true, slug })
+    return NextResponse.json({ success: true, slug: settings?.slug || 'demo' })
   } catch (error) {
     console.error('[INVITE ACCEPT] unexpected error:', error)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
