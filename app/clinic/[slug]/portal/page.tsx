@@ -21,6 +21,8 @@ interface PatientInfo {
   intake_status: string
 }
 
+interface Message { role: 'user' | 'assistant'; content: string }
+
 const TYPE_COLOR: Record<string, string> = {
   cleaning: '#0EA5E9', checkup: '#6366F1', filling: '#A78BFA',
   emergency: '#F43F5E', consultation: '#F59E0B'
@@ -29,12 +31,22 @@ const TYPE_COLOR: Record<string, string> = {
 export default function PatientPortal({ params }: { params: Promise<{ slug: string }> }) {
   const [slug, setSlug] = useState('')
   const [clinicName, setClinicName] = useState('')
-  const [patientId, setPatientId] = useState('')
+  const [clinicId, setClinicId] = useState('')
+  const [clinicColor, setClinicColor] = useState('#0EA5E9')
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null)
+  const [patientAuthId, setPatientAuthId] = useState<string | null>(null)
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
   const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting'>('appointments')
   const [loading, setLoading] = useState(true)
+
+  // Booking panel state
+  const [showBooking, setShowBooking] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatStarted, setChatStarted] = useState(false)
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -45,37 +57,34 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push(`/clinic/${slug}/login?type=patient`); return }
+      setPatientAuthId(user.id)
 
       const { data: account } = await supabase
         .from('patient_accounts')
-        .select('patient_id, clinic_id, clinics(name)')
+        .select('patient_id, clinic_id, clinics(name, primary_color)')
         .eq('auth_id', user.id).single()
 
       if (!account) { router.push(`/clinic/${slug}`); return }
-
       const clinic = Array.isArray(account.clinics) ? account.clinics[0] : account.clinics
-      setClinicName((clinic as { name: string })?.name || '')
-      setPatientId(account.patient_id)
+      setClinicName((clinic as any)?.name || '')
+      setClinicColor((clinic as any)?.primary_color || '#0EA5E9')
+      setClinicId(account.clinic_id)
 
       const { data: patient } = await supabase
         .from('patients')
         .select('full_name, email, phone_primary, insurance_provider, intake_status')
         .eq('id', account.patient_id).single()
-
       setPatientInfo(patient)
 
       const now = new Date().toISOString()
       const [{ data: upcomingData }, { data: pastData }] = await Promise.all([
-        supabase.from('appointments')
-          .select('id, start_time, appointment_type, status, reason, booked_via')
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
           .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
           .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5),
-        supabase.from('appointments')
-          .select('id, start_time, appointment_type, status, reason, booked_via')
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
           .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
           .lt('start_time', now).order('start_time', { ascending: false }).limit(10)
       ])
-
       setUpcoming(upcomingData || [])
       setPast(pastData || [])
       setLoading(false)
@@ -95,11 +104,66 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
   const intakeStatus = patientInfo?.intake_status || 'incomplete'
 
+  // ── Chat functions ──────────────────────────────────────────────────────
+  const openBooking = () => {
+    setShowBooking(true)
+    if (!chatStarted) startChat()
+  }
+
+  const startChat = async () => {
+    setChatStarted(true)
+    setChatLoading(true)
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Hello' }],
+        clinicId,
+        patientAuthId
+      })
+    })
+    const data = await res.json()
+    setMessages([{ role: 'assistant', content: data.message }])
+    setChatLoading(false)
+  }
+
+  const sendChat = async (overrideText?: string) => {
+    const text = (overrideText ?? chatInput).trim()
+    if (!text || chatLoading) return
+    const userMsg: Message = { role: 'user', content: text }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
+    setChatInput('')
+    setChatLoading(true)
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: newMessages, clinicId, patientAuthId })
+    })
+    const data = await res.json()
+    setMessages([...newMessages, { role: 'assistant', content: data.message }])
+    setChatLoading(false)
+  }
+
+  const closeBooking = () => {
+    setShowBooking(false)
+    // Reload appointments in case something was booked
+    if (clinicId && patientInfo) {
+      const now = new Date().toISOString()
+      supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
+        .eq('clinic_id', clinicId).eq('status', 'scheduled')
+        .gte('start_time', now).order('start_time').limit(5)
+        .then(({ data }) => { if (data) setUpcoming(data) })
+    }
+  }
+
   const NAV = [
     { icon: '▦', label: 'Appointments', key: 'appointments' },
     { icon: '◈', label: 'My info', key: 'profile' },
     { icon: '◷', label: 'Waitlist', key: 'waiting' },
   ]
+
+  const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
 
   return (
     <>
@@ -107,10 +171,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         body{font-family:'DM Sans',sans-serif;background:#F0F4F8;color:#0F172A}
-
         .layout{display:flex;min-height:100vh}
-
-        /* ── Sidebar ── */
         .sidebar{width:240px;background:#0F172A;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50}
         .logo-area{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.06)}
         .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:3px}
@@ -124,52 +185,35 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .nav-item.active{background:rgba(14,165,233,0.1);color:#0EA5E9;font-weight:500}
         .nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:55%;background:#0EA5E9;border-radius:0 2px 2px 0}
         .nav-icon{font-size:13px;width:18px;text-align:center}
-
-        /* Intake status in sidebar */
         .intake-sidebar{margin:0 12px 12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:all .15s;border:none;width:calc(100% - 24px);text-align:left;font-family:'DM Sans',sans-serif}
         .intake-sidebar.incomplete{background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25)}
         .intake-sidebar.pending{background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15)}
         .intake-sidebar.approved{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)}
         .intake-sidebar.rejected{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2)}
         .intake-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;margin-right:6px}
-        .intake-label{font-size:11px;font-weight:600;letter-spacing:0.3px}
-
+        .intake-label{font-size:11px;font-weight:600;letter-spacing:.3px}
+        .book-btn-sidebar{margin:0 12px 12px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:8px;color:#0EA5E9;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
+        .book-btn-sidebar:hover{background:rgba(14,165,233,0.14)}
+        .book-dot{width:5px;height:5px;border-radius:50%;background:#0EA5E9;box-shadow:0 0 6px rgba(14,165,233,0.8)}
         .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.06)}
         .patient-name{font-size:13px;color:#CBD5E1;font-weight:500;margin-bottom:2px}
         .signout{font-size:12px;color:rgba(148,163,184,0.4);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;transition:color .15s}
         .signout:hover{color:#94A3B8}
-
-        .book-btn-sidebar{margin:0 12px 12px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:8px;color:#0EA5E9;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
-        .book-btn-sidebar:hover{background:rgba(14,165,233,0.14)}
-        .book-dot{width:5px;height:5px;border-radius:50%;background:#0EA5E9;box-shadow:0 0 6px rgba(14,165,233,0.8)}
-
-        /* ── Main content ── */
         .main{flex:1;margin-left:240px;padding:36px 40px;min-height:100vh}
-
         .page-header{margin-bottom:28px}
         .page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.4px}
         .page-sub{font-size:13px;color:#94A3B8;margin-top:3px}
-
-        /* Intake banner */
         .intake-banner{background:white;border:1.5px solid #FDE68A;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
         .intake-banner-icon{font-size:20px;flex-shrink:0}
-        .intake-banner-text{flex:1}
         .intake-banner-title{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:2px}
         .intake-banner-sub{font-size:12px;color:#64748B}
-        .intake-banner-btn{padding:9px 18px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:background .15s}
-        .intake-banner-btn:hover{background:#1E293B}
-
+        .intake-banner-btn{padding:9px 18px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
         .intake-approved-banner{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#166534;font-weight:500}
-
         .intake-pending-banner{background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#92400E;font-weight:500}
-
-        /* Cards */
         .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
         .card-header{padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
         .card-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:#0F172A}
-        .card-meta{font-size:11px;color:#CBD5E1}
-
-        .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC;transition:background .12s}
+        .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC}
         .apt-row:last-child{border-bottom:none}
         .apt-bar{width:3px;height:36px;border-radius:2px;flex-shrink:0}
         .apt-info{flex:1}
@@ -179,27 +223,52 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
         .badge-past{background:#F8FAFC;color:#CBD5E1}
         .badge-cancelled{background:#FEF2F2;color:#F87171}
-
         .profile-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
         .profile-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F8FAFC}
         .profile-row:last-child{border-bottom:none}
         .profile-label{font-size:12px;color:#94A3B8;font-weight:500}
         .profile-value{font-size:14px;color:#0F172A}
-
         .status-row{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;margin-top:16px}
-        .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-        .status-label{font-size:14px;font-weight:500;color:#0F172A;text-transform:capitalize}
-        .status-sub{font-size:12px;color:#94A3B8;margin-top:2px}
         .start-btn{padding:8px 16px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
-
         .waitlist-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:32px;text-align:center}
         .waitlist-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:8px}
         .waitlist-sub{font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.6;max-width:360px;margin-left:auto;margin-right:auto}
         .waitlist-btn{display:inline-block;padding:10px 20px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none}
-
         .section-title{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;margin-bottom:12px}
         .empty{padding:32px 20px;text-align:center;color:#CBD5E1;font-size:13px}
-        .empty-icon{font-size:24px;margin-bottom:8px;opacity:.5}
+
+        /* ── Booking panel ── */
+        .booking-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200}
+        .booking-panel{position:fixed;top:0;right:0;width:420px;height:100vh;background:white;z-index:201;display:flex;flex-direction:column;box-shadow:-4px 0 32px rgba(0,0,0,0.15)}
+        .booking-header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #F1F5F9}
+        .booking-header-left{display:flex;align-items:center;gap:10px}
+        .booking-avatar{width:32px;height:32px;border-radius:50%;background:#E0F2FE;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+        .booking-title{font-size:14px;font-weight:600;color:#0F172A}
+        .booking-status{font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;margin-top:1px}
+        .status-dot-green{width:5px;height:5px;border-radius:50%;background:#4ADE80}
+        .close-btn{width:30px;height:30px;border-radius:8px;border:1px solid #E2E8F0;background:white;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:#64748B;flex-shrink:0}
+        .close-btn:hover{background:#F8FAFC}
+        .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+        .bubble-wrap{display:flex;align-items:flex-end;gap:8px}
+        .bubble-wrap.user{flex-direction:row-reverse}
+        .bot-icon{width:24px;height:24px;border-radius:50%;background:#E0F2FE;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px}
+        .bubble{max-width:80%;padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.55;white-space:pre-wrap}
+        .bubble.assistant{background:#F1F5F9;color:#1E293B;border-bottom-left-radius:3px}
+        .bubble.user{color:white;border-bottom-right-radius:3px}
+        .typing{display:flex;align-items:center;gap:4px;padding:9px 13px;background:#F1F5F9;border-radius:14px;border-bottom-left-radius:3px;width:fit-content}
+        .tdot{width:5px;height:5px;border-radius:50%;background:#94A3B8;animation:bounce 1.2s infinite}
+        .tdot:nth-child(2){animation-delay:.2s}
+        .tdot:nth-child(3){animation-delay:.4s}
+        @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}
+        .chips-row{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px}
+        .chip{padding:5px 12px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;background:white;transition:all .15s;white-space:nowrap}
+        .chat-footer{padding:12px 16px;border-top:1px solid #E2E8F0;background:white;flex-shrink:0}
+        .chat-input-row{display:flex;gap:8px;align-items:center}
+        .chat-input{flex:1;padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:20px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;color:#1E293B;transition:border-color .15s}
+        .chat-input:focus{border-color:#0EA5E9}
+        .send-btn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:filter .15s}
+        .send-btn:hover{filter:brightness(.9)}
+        .send-btn:disabled{opacity:.4;cursor:not-allowed}
       `}</style>
 
       <div className="layout">
@@ -216,18 +285,15 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
           <nav className="nav">
             <div className="nav-label">My account</div>
             {NAV.map(item => (
-              <button
-                key={item.key}
+              <button key={item.key}
                 className={`nav-item ${tab === item.key ? 'active' : ''}`}
-                onClick={() => setTab(item.key as typeof tab)}
-              >
+                onClick={() => setTab(item.key as typeof tab)}>
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
               </button>
             ))}
           </nav>
 
-          {/* Intake status button */}
           <button
             className={`intake-sidebar ${intakeStatus === 'approved' ? 'approved' : intakeStatus === 'pending_review' ? 'pending' : intakeStatus === 'rejected' ? 'rejected' : 'incomplete'}`}
             onClick={() => (intakeStatus === 'incomplete' || intakeStatus === 'rejected') && router.push(`/clinic/${slug}/intake`)}
@@ -243,7 +309,8 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
             </span>
           </button>
 
-          <button className="book-btn-sidebar" onClick={() => router.push(`/clinic/${slug}/book`)}>
+          {/* Book button opens panel instead of new page */}
+          <button className="book-btn-sidebar" onClick={openBooking}>
             <div className="book-dot" />
             Book an appointment
           </button>
@@ -271,44 +338,32 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
           {intakeStatus === 'incomplete' && (
             <div className="intake-banner">
               <div className="intake-banner-icon">📋</div>
-              <div className="intake-banner-text">
+              <div>
                 <div className="intake-banner-title">Action required — complete your intake form</div>
                 <div className="intake-banner-sub">Required before your first visit. Takes about 5 minutes.</div>
               </div>
-              <button className="intake-banner-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>
-                Start now
-              </button>
+              <button className="intake-banner-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>Start now</button>
             </div>
           )}
-
           {intakeStatus === 'rejected' && (
             <div className="intake-banner" style={{ borderColor: '#FECACA' }}>
               <div className="intake-banner-icon">⚠️</div>
-              <div className="intake-banner-text">
+              <div>
                 <div className="intake-banner-title">Your intake form needs corrections</div>
                 <div className="intake-banner-sub">The clinic has requested changes. Please resubmit.</div>
               </div>
-              <button className="intake-banner-btn" style={{ background: '#F43F5E' }} onClick={() => router.push(`/clinic/${slug}/intake`)}>
-                Resubmit
-              </button>
+              <button className="intake-banner-btn" style={{ background: '#F43F5E' }} onClick={() => router.push(`/clinic/${slug}/intake`)}>Resubmit</button>
             </div>
           )}
-
           {intakeStatus === 'pending_review' && (
-            <div className="intake-pending-banner">
-              ⏳ Your intake form has been submitted and is pending staff review.
-            </div>
+            <div className="intake-pending-banner">⏳ Your intake form has been submitted and is pending staff review.</div>
           )}
-
           {intakeStatus === 'approved' && (
-            <div className="intake-approved-banner">
-              ✓ Your patient file is complete and approved.
-            </div>
+            <div className="intake-approved-banner">✓ Your patient file is complete and approved.</div>
           )}
 
-          {/* Tab content */}
           {loading ? (
-            <div className="empty"><div className="empty-icon">⏳</div>Loading...</div>
+            <div className="empty">Loading...</div>
           ) : tab === 'appointments' ? (
             <>
               {upcoming.length > 0 && (
@@ -329,10 +384,9 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </div>
                 </>
               )}
-
               <div className="section-title" style={{ marginTop: upcoming.length > 0 ? '20px' : '0' }}>Past visits</div>
               {past.length === 0 ? (
-                <div className="empty"><div className="empty-icon">📋</div>No past visits yet</div>
+                <div className="empty">No past visits yet</div>
               ) : (
                 <div className="card">
                   {past.map(apt => (
@@ -342,9 +396,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                         <div className="apt-type">{apt.appointment_type}</div>
                         <div className="apt-time">{formatTime(apt.start_time)}</div>
                       </div>
-                      <span className={`apt-badge ${apt.status === 'cancelled' ? 'badge-cancelled' : 'badge-past'}`}>
-                        {apt.status}
-                      </span>
+                      <span className={`apt-badge ${apt.status === 'cancelled' ? 'badge-cancelled' : 'badge-past'}`}>{apt.status}</span>
                     </div>
                   ))}
                 </div>
@@ -366,16 +418,13 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </div>
                 ))}
               </div>
-
               <div className="section-title" style={{ marginTop: '20px' }}>Intake form</div>
               <div className="status-row">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div className="status-dot" style={{
-                    background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : '#CBD5E1'
-                  }} />
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : '#CBD5E1' }} />
                   <div>
-                    <div className="status-label">{intakeStatus === 'incomplete' ? 'Not started' : intakeStatus.replace('_', ' ')}</div>
-                    <div className="status-sub">
+                    <div style={{ fontSize: '14px', fontWeight: 500, color: '#0F172A', textTransform: 'capitalize' }}>{intakeStatus === 'incomplete' ? 'Not started' : intakeStatus.replace('_', ' ')}</div>
+                    <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '2px' }}>
                       {intakeStatus === 'incomplete' && 'Required before your first visit'}
                       {intakeStatus === 'pending_review' && 'Submitted — awaiting staff review'}
                       {intakeStatus === 'approved' && 'Your patient file is complete'}
@@ -389,27 +438,92 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </button>
                 )}
               </div>
-
-              <div style={{ fontSize: '12px', color: '#94A3B8', padding: '12px 0' }}>
-                To update your information, please contact the clinic directly.
-              </div>
             </>
           ) : (
             <>
               <div className="section-title">Waiting list</div>
               <div className="waitlist-card">
                 <div className="waitlist-title">Get notified of openings</div>
-                <div className="waitlist-sub">
-                  Join the waiting list and our AI agent will notify you when a slot opens that matches your needs.
-                </div>
-                <button className="waitlist-btn" onClick={() => router.push(`/clinic/${slug}/book?waitlist=true`)}>
-                  Join waiting list
-                </button>
+                <div className="waitlist-sub">Join the waiting list and our AI agent will notify you when a slot opens that matches your needs.</div>
+                <button className="waitlist-btn" onClick={openBooking}>Join waiting list</button>
               </div>
             </>
           )}
         </main>
       </div>
+
+      {/* Booking panel slide-in */}
+      {showBooking && (
+        <>
+          <div className="booking-overlay" onClick={closeBooking} />
+          <div className="booking-panel">
+            <div className="booking-header" style={{ borderTop: `3px solid ${clinicColor}` }}>
+              <div className="booking-header-left">
+                <div className="booking-avatar">🤖</div>
+                <div>
+                  <div className="booking-title">{clinicName}</div>
+                  <div className="booking-status">
+                    <div className="status-dot-green" />
+                    AI Front Desk — Available 24/7
+                  </div>
+                </div>
+              </div>
+              <button className="close-btn" onClick={closeBooking}>✕</button>
+            </div>
+
+            <div className="chat-messages">
+              {messages.map((msg, i) => (
+                <div key={i} className={`bubble-wrap ${msg.role}`}>
+                  {msg.role === 'assistant' && <div className="bot-icon">🤖</div>}
+                  <div className={`bubble ${msg.role}`} style={msg.role === 'user' ? { background: clinicColor } : {}}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="bubble-wrap assistant">
+                  <div className="bot-icon">🤖</div>
+                  <div className="typing">
+                    <div className="tdot" /><div className="tdot" /><div className="tdot" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {messages.length === 1 && !chatLoading && (
+              <div className="chips-row">
+                {CHIPS.map(chip => (
+                  <button key={chip} className="chip"
+                    style={{ borderColor: clinicColor, color: clinicColor }}
+                    onClick={() => sendChat(chip)}>
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="chat-footer">
+              <div className="chat-input-row">
+                <input
+                  className="chat-input"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+                  placeholder="Type a message..."
+                  disabled={chatLoading}
+                  autoFocus
+                />
+                <button className="send-btn" style={{ background: clinicColor }}
+                  onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }
