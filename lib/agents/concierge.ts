@@ -421,7 +421,7 @@ async function runTool(
         })
       }
 
-      const anyTime = input.any_time === true || input.any_time === 'true'
+      const anyTime = input.any_time === 'true' || (input.any_time as unknown) === true
 
       const { data, error } = await db
         .from('waiting_list')
