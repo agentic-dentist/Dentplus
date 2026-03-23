@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 
     // ── Step 3: Async auditor ──────────────────────────────────────────────
     if (messages.length > 2) {
-      runAuditor(messages, clinicId).catch(console.error)
+      runAuditor(messages, clinicId, clinic.name).catch(console.error)
     }
 
     return NextResponse.json({
