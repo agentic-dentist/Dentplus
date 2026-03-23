@@ -12,6 +12,7 @@ import {
   audit
 } from '@/lib/audit'
 import type { OrchestratorResult } from './orchestrator'
+import { runMatchmaker } from './matchmaker'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -591,6 +592,24 @@ async function runTool(
         entity_id: input.appointment_id,
         success: true
       })
+
+      // Fetch the cancelled appointment details to run matchmaker
+      const { data: cancelled } = await db
+        .from('appointments')
+        .select('appointment_type, start_time, end_time, provider_id')
+        .eq('id', input.appointment_id)
+        .single()
+
+      if (cancelled) {
+        // Fire matchmaker async — do not await, must not block the agent response
+        runMatchmaker({
+          clinicId,
+          appointmentType: cancelled.appointment_type,
+          startTime: cancelled.start_time,
+          endTime: cancelled.end_time,
+          providerId: cancelled.provider_id,
+        }).catch(err => console.error('[MATCHMAKER]', err))
+      }
 
       return JSON.stringify({ success: true, message: 'Appointment cancelled successfully.' })
     }
