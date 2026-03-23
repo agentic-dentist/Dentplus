@@ -13,6 +13,7 @@ import {
 } from '@/lib/audit'
 import type { OrchestratorResult } from './orchestrator'
 import { runMatchmaker } from './matchmaker'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -547,7 +548,6 @@ async function runTool(
 
       // Use service role for insert + select-back — anon key RLS blocks the
       // read-back after insert, causing false 'Booking failed' even when it succeeded
-      const { createClient: createAdminClient } = await import('@supabase/supabase-js')
       const adminDb = createAdminClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
