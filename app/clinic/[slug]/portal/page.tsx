@@ -23,6 +23,14 @@ interface PatientInfo {
   intake_status: string
 }
 
+interface WaitlistOffer {
+  id: string
+  appointment_type: string
+  offered_slot_start: string
+  offered_slot_end: string
+  urgency: string
+}
+
 interface Message { role: 'user' | 'assistant'; content: string }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -56,6 +64,10 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
   // Confirmation state
   const [confirming, setConfirming] = useState<string | null>(null)
+
+  // Waitlist offer state
+  const [waitlistOffer, setWaitlistOffer] = useState<WaitlistOffer | null>(null)
+  const [offerResponding, setOfferResponding] = useState(false)
 
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
@@ -125,6 +137,19 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .limit(1)
         .single()
       if (wlData) setWaitlistEntry(wlData)
+
+      // Check for active slot offer
+      const { data: offerData } = await supabase
+        .from('waiting_list')
+        .select('id, appointment_type, offered_slot_start, offered_slot_end, urgency')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('status', 'offered')
+        .not('offered_slot_start', 'is', null)
+        .order('offered_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (offerData) setWaitlistOffer(offerData)
 
       setLoading(false)
     }
@@ -254,6 +279,57 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     setConfirming(null)
   }
 
+  const acceptOffer = async () => {
+    if (!waitlistOffer || !patientId || !clinicId) return
+    setOfferResponding(true)
+
+    const { createClient: createAdminClient } = await import('@supabase/supabase-js')
+    // Use API route to handle this server-side with service role
+    const res = await fetch('/api/waitlist/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        waitlistId: waitlistOffer.id,
+        action: 'accept',
+        clinicId,
+        patientId,
+      })
+    })
+    const data = await res.json()
+    if (data.success) {
+      setWaitlistOffer(null)
+      setWaitlistEntry(null)
+      // Reload upcoming appointments
+      const now = new Date().toISOString()
+      const { data: upcomingData } = await supabase
+        .from('appointments')
+        .select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
+        .eq('clinic_id', clinicId).eq('patient_id', patientId)
+        .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5)
+      setUpcoming(upcomingData || [])
+      setTab('appointments')
+    }
+    setOfferResponding(false)
+  }
+
+  const declineOffer = async () => {
+    if (!waitlistOffer || !clinicId) return
+    setOfferResponding(true)
+    await fetch('/api/waitlist/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        waitlistId: waitlistOffer.id,
+        action: 'decline',
+        clinicId,
+        patientId,
+      })
+    })
+    setWaitlistOffer(null)
+    setWaitlistEntry(null)
+    setOfferResponding(false)
+  }
+
   const NAV = [
     { icon: '▦', label: 'Appointments', key: 'appointments' },
     { icon: '◈', label: 'My info', key: 'profile' },
@@ -318,6 +394,21 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .apt-time{font-size:12px;color:#64748B;margin-top:2px}
         .apt-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px}
         .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
+        .offer-banner{background:white;border:2px solid #0EA5E9;border-radius:14px;padding:20px 24px;margin-bottom:24px;position:relative;overflow:hidden}
+        .offer-banner::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0EA5E9,#6366F1)}
+        .offer-pulse{display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;color:#0EA5E9;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:12px;letter-spacing:.3px}
+        .offer-dot{width:6px;height:6px;border-radius:50%;background:#0EA5E9;animation:pulse 1.5s infinite}
+        @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+        .offer-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0F172A;margin-bottom:4px}
+        .offer-slot{font-size:14px;color:#0EA5E9;font-weight:600;margin-bottom:12px}
+        .offer-sub{font-size:13px;color:#64748B;margin-bottom:16px;line-height:1.5}
+        .offer-actions{display:flex;gap:10px}
+        .offer-accept{flex:1;padding:11px;background:#0EA5E9;color:white;border:none;border-radius:9px;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:background .15s}
+        .offer-accept:hover{background:#0284C7}
+        .offer-accept:disabled{opacity:.6;cursor:not-allowed}
+        .offer-decline{padding:11px 20px;background:white;color:#94A3B8;border:1.5px solid #E2E8F0;border-radius:9px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s}
+        .offer-decline:hover{border-color:#F43F5E;color:#F43F5E}
+        .offer-decline:disabled{opacity:.6;cursor:not-allowed}
         .confirm-btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:1.5px solid #E2E8F0;background:white;color:#64748B;transition:all .15s;white-space:nowrap}
         .confirm-btn:hover{border-color:#10B981;color:#10B981;background:#F0FDF4}
         .confirm-btn:disabled{opacity:.6;cursor:not-allowed}
@@ -461,6 +552,34 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
           )}
           {intakeStatus === 'approved' && (
             <div className="intake-approved-banner">✓ Your patient file is complete and approved.</div>
+          )}
+
+          {/* Slot offer banner — shown when Matchmaker found a slot for this patient */}
+          {waitlistOffer && (
+            <div className="offer-banner">
+              <div className="offer-pulse">
+                <div className="offer-dot" />
+                SLOT AVAILABLE
+              </div>
+              <div className="offer-title">A spot just opened up for you!</div>
+              <div className="offer-slot">
+                {waitlistOffer.appointment_type.charAt(0).toUpperCase() + waitlistOffer.appointment_type.slice(1)} — {new Date(waitlistOffer.offered_slot_start).toLocaleDateString('en-CA', {
+                  weekday: 'long', month: 'long', day: 'numeric',
+                  hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                })}
+              </div>
+              <div className="offer-sub">
+                This slot was reserved for you from the waitlist. Accept to confirm your appointment, or decline to pass — we will notify the next patient.
+              </div>
+              <div className="offer-actions">
+                <button className="offer-accept" onClick={acceptOffer} disabled={offerResponding}>
+                  {offerResponding ? 'Processing...' : 'Accept appointment'}
+                </button>
+                <button className="offer-decline" onClick={declineOffer} disabled={offerResponding}>
+                  Decline
+                </button>
+              </div>
+            </div>
           )}
 
           {loading ? (
