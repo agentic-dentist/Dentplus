@@ -11,6 +11,8 @@ interface Appointment {
   status: string
   reason: string
   booked_via: string
+  patient_confirmed: boolean
+  patient_confirmed_at: string | null
 }
 
 interface PatientInfo {
@@ -51,6 +53,9 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [wlDays, setWlDays] = useState<string[]>([])
   const [wlTimes, setWlTimes] = useState<string[]>([])
   const [waitlistEntry, setWaitlistEntry] = useState<{ appointment_type: string; urgency: string; created_at: string } | null>(null)
+
+  // Confirmation state
+  const [confirming, setConfirming] = useState<string | null>(null)
 
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
@@ -99,7 +104,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
       const now = new Date().toISOString()
       const [{ data: upcomingData }, { data: pastData }] = await Promise.all([
-        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
           .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
           .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5),
         supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
@@ -230,13 +235,23 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     // Reload appointments in case something was booked — always filter by patientId
     if (clinicId && patientId) {
       const now = new Date().toISOString()
-      supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
+      supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
         .eq('clinic_id', clinicId)
         .eq('patient_id', patientId)
         .eq('status', 'scheduled')
         .gte('start_time', now).order('start_time').limit(5)
         .then(({ data }) => { if (data) setUpcoming(data) })
     }
+  }
+
+  const confirmAppointment = async (aptId: string) => {
+    setConfirming(aptId)
+    await supabase
+      .from('appointments')
+      .update({ patient_confirmed: true, patient_confirmed_at: new Date().toISOString() })
+      .eq('id', aptId)
+    setUpcoming(prev => prev.map(a => a.id === aptId ? { ...a, patient_confirmed: true } : a))
+    setConfirming(null)
   }
 
   const NAV = [
@@ -303,6 +318,10 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .apt-time{font-size:12px;color:#64748B;margin-top:2px}
         .apt-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px}
         .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
+        .confirm-btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:1.5px solid #E2E8F0;background:white;color:#64748B;transition:all .15s;white-space:nowrap}
+        .confirm-btn:hover{border-color:#10B981;color:#10B981;background:#F0FDF4}
+        .confirm-btn:disabled{opacity:.6;cursor:not-allowed}
+        .confirmed-badge{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#10B981;white-space:nowrap}
         .badge-past{background:#F8FAFC;color:#CBD5E1}
         .badge-cancelled{background:#FEF2F2;color:#F87171}
         .profile-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
@@ -452,17 +471,35 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                 <>
                   <div className="section-title">Upcoming</div>
                   <div className="card">
-                    {upcoming.map(apt => (
-                      <div key={apt.id} className="apt-row">
-                        <div className="apt-bar" style={{ background: TYPE_COLOR[apt.appointment_type] || '#E2E8F0' }} />
-                        <div className="apt-info">
-                          <div className="apt-type">{apt.appointment_type}</div>
-                          <div className="apt-time">{formatTime(apt.start_time)}</div>
-                          {apt.reason && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{apt.reason}</div>}
+                    {upcoming.map(apt => {
+                      const hoursUntil = (new Date(apt.start_time).getTime() - Date.now()) / 36e5
+                      const showConfirm = hoursUntil <= 48 && hoursUntil > 0
+                      return (
+                        <div key={apt.id} className="apt-row">
+                          <div className="apt-bar" style={{ background: TYPE_COLOR[apt.appointment_type] || '#E2E8F0' }} />
+                          <div className="apt-info">
+                            <div className="apt-type">{apt.appointment_type}</div>
+                            <div className="apt-time">{formatTime(apt.start_time)}</div>
+                            {apt.reason && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{apt.reason}</div>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                            {apt.patient_confirmed ? (
+                              <span className="confirmed-badge">✓ Confirmed</span>
+                            ) : showConfirm ? (
+                              <button
+                                className="confirm-btn"
+                                onClick={() => confirmAppointment(apt.id)}
+                                disabled={confirming === apt.id}
+                              >
+                                {confirming === apt.id ? 'Confirming...' : 'Confirm attendance'}
+                              </button>
+                            ) : (
+                              <span className="apt-badge badge-upcoming">Scheduled</span>
+                            )}
+                          </div>
                         </div>
-                        <span className="apt-badge badge-upcoming">Scheduled</span>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </>
               )}
