@@ -44,6 +44,9 @@ export default function PatientsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const [dentists, setDentists] = useState<{ id: string; full_name: string; role: string }[]>([])
+  const [assignedDentistId, setAssignedDentistId] = useState<string>('')
+  const [assignedHygienistId, setAssignedHygienistId] = useState<string>('')
   const [rejectionReason, setRejectionReason] = useState('')
   const [showReject, setShowReject] = useState(false)
   const supabase = createClient()
@@ -67,6 +70,16 @@ export default function PatientsPage() {
       setPatients(data || [])
       setFiltered(data || [])
       setLoading(false)
+
+      // Load clinical staff for assignment dropdown
+      const { data: staffData } = await supabase
+        .from('staff_accounts')
+        .select('id, full_name, role')
+        .eq('clinic_id', staff.clinic_id)
+        .eq('is_active', true)
+        .in('role', ['dentist', 'hygienist', 'owner'])
+        .order('role')
+      setDentists(staffData || [])
     }
     init()
   }, [])
@@ -86,6 +99,8 @@ export default function PatientsPage() {
     setLoadingDetail(true)
     setShowReject(false)
     setRejectionReason('')
+    setAssignedDentistId((patient as any).assigned_dentist_id || '')
+    setAssignedHygienistId((patient as any).assigned_hygienist_id || '')
 
     // Get latest record for each table using order + limit
     const [{ data: medicalRows }, { data: dentalRow }, { data: insurance }, { data: consents }] = await Promise.all([
@@ -128,7 +143,9 @@ export default function PatientsPage() {
     await supabase.from('patients').update({
       intake_status: 'approved',
       intake_reviewed_at: new Date().toISOString(),
-      intake_reviewed_by: staff?.id
+      intake_reviewed_by: staff?.id,
+      assigned_dentist_id: assignedDentistId || null,
+      assigned_hygienist_id: assignedHygienistId || null
     }).eq('id', selected.id)
     setPatients(prev => prev.map(p => p.id === selected.id ? { ...p, intake_status: 'approved' } : p))
     setSelected(prev => prev ? { ...prev, intake_status: 'approved' } : null)
@@ -193,6 +210,11 @@ export default function PatientsPage() {
         .btn-approve:disabled{opacity:.5;cursor:not-allowed}
         .btn-reject{padding:9px 20px;background:#FEF2F2;color:#F87171;border-radius:8px;font-size:13px;font-weight:500;border:1.5px solid #FECACA;cursor:pointer;font-family:'DM Sans',sans-serif}
         .reject-box{background:#FFF;border:1px solid #FECACA;border-radius:8px;padding:14px;margin-bottom:16px}
+        .assign-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:14px;margin-bottom:16px}
+        .assign-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0}
+        .assign-label{font-size:11px;font-weight:600;color:#64748B;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+        .assign-select{width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:white;color:#0F172A;cursor:pointer}
+        .assign-select:focus{border-color:#0EA5E9}
         textarea{width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:none}
         .reject-reason-shown{background:#FEF2F2;border-radius:8px;padding:10px 14px;font-size:13px;color:#DC2626;margin-bottom:16px}
 
@@ -301,6 +323,31 @@ export default function PatientsPage() {
               {/* Approve / Reject */}
               {selected.intake_status === 'pending_review' && (
                 <>
+                  <div className="assign-box">
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '10px' }}>
+                      Assign care team
+                    </div>
+                    <div className="assign-row">
+                      <div>
+                        <div className="assign-label">Dentist</div>
+                        <select className="assign-select" value={assignedDentistId} onChange={e => setAssignedDentistId(e.target.value)}>
+                          <option value="">— Unassigned</option>
+                          {dentists.filter(d => d.role === 'dentist' || d.role === 'owner').map(d => (
+                            <option key={d.id} value={d.id}>{d.full_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="assign-label">Hygienist</div>
+                        <select className="assign-select" value={assignedHygienistId} onChange={e => setAssignedHygienistId(e.target.value)}>
+                          <option value="">— Unassigned</option>
+                          {dentists.filter(d => d.role === 'hygienist').map(d => (
+                            <option key={d.id} value={d.id}>{d.full_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                   <div className="action-row">
                     <button className="btn-approve" onClick={approve} disabled={processing}>✓ Approve patient</button>
                     <button className="btn-reject" onClick={() => setShowReject(!showReject)}>✕ Reject</button>
@@ -321,6 +368,30 @@ export default function PatientsPage() {
               {selected.intake_status === 'rejected' && selected.intake_rejection_reason && (
                 <div className="reject-reason-shown">
                   Rejected: {selected.intake_rejection_reason}
+                </div>
+              )}
+
+              {selected.intake_status === 'approved' && (assignedDentistId || assignedHygienistId) && (
+                <div className="assign-box" style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '8px' }}>Care team</div>
+                  <div className="assign-row">
+                    {assignedDentistId && (
+                      <div>
+                        <div className="assign-label">Dentist</div>
+                        <div style={{ fontSize: '13px', color: '#0F172A' }}>
+                          {dentists.find(d => d.id === assignedDentistId)?.full_name || '—'}
+                        </div>
+                      </div>
+                    )}
+                    {assignedHygienistId && (
+                      <div>
+                        <div className="assign-label">Hygienist</div>
+                        <div style={{ fontSize: '13px', color: '#0F172A' }}>
+                          {dentists.find(d => d.id === assignedHygienistId)?.full_name || '—'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

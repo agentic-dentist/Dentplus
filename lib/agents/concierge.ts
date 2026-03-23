@@ -40,7 +40,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_available_slots',
-    description: 'Get available appointment slots.',
+    description: 'Get available appointment slots. If patient has an assigned dentist or hygienist, pass their provider_id to show their availability first.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -51,6 +51,10 @@ const TOOLS: Anthropic.Tool[] = [
         urgency: {
           type: 'string',
           enum: ['routine', 'urgent', 'emergency']
+        },
+        provider_id: {
+          type: 'string',
+          description: 'Staff ID of the preferred provider. Pass assigned_dentist.id or assigned_hygienist.id from patient context.'
         }
       },
       required: ['appointment_type']
@@ -65,7 +69,8 @@ const TOOLS: Anthropic.Tool[] = [
         external_ref: { type: 'string' },
         appointment_type: { type: 'string' },
         start_time: { type: 'string', description: 'ISO 8601 datetime' },
-        reason: { type: 'string' }
+        reason: { type: 'string' },
+        provider_id: { type: 'string', description: 'Staff ID of the provider performing the appointment' }
       },
       required: ['external_ref', 'appointment_type', 'start_time']
     }
@@ -148,9 +153,31 @@ async function runTool(
 
       const { data: patient } = await db
         .from('patients')
-        .select('insurance_provider, insurance_number')
+        .select('insurance_provider, insurance_number, assigned_dentist_id, assigned_hygienist_id')
         .eq('id', validation.internalId)
         .single()
+
+      // Resolve assigned provider names
+      let assignedDentistName: string | null = null
+      let assignedHygienistName: string | null = null
+
+      if (patient?.assigned_dentist_id) {
+        const { data: dentist } = await db
+          .from('staff_accounts')
+          .select('full_name')
+          .eq('id', patient.assigned_dentist_id)
+          .single()
+        assignedDentistName = dentist?.full_name || null
+      }
+
+      if (patient?.assigned_hygienist_id) {
+        const { data: hygienist } = await db
+          .from('staff_accounts')
+          .select('full_name')
+          .eq('id', patient.assigned_hygienist_id)
+          .single()
+        assignedHygienistName = hygienist?.full_name || null
+      }
 
       const formatTime = (iso: string) =>
         new Date(iso).toLocaleDateString('en-CA', {
@@ -201,13 +228,20 @@ async function runTool(
         } : null,
         insurance: patient?.insurance_provider
           ? { provider: patient.insurance_provider, note: 'Exact coverage details will be confirmed by the clinic before your appointment.' }
-          : { provider: null, note: 'No insurance on file. You can provide it when you arrive.' }
+          : { provider: null, note: 'No insurance on file. You can provide it when you arrive.' },
+        assigned_dentist: assignedDentistName
+          ? { name: assignedDentistName, id: patient.assigned_dentist_id, note: `This patient's dentist is ${assignedDentistName}. Offer their slots first when booking.` }
+          : null,
+        assigned_hygienist: assignedHygienistName
+          ? { name: assignedHygienistName, id: patient.assigned_hygienist_id, note: `This patient's hygienist is ${assignedHygienistName}. Offer their slots for cleanings and checkups.` }
+          : null
       })
     }
 
     case 'get_available_slots': {
       const duration = input.appointment_type === 'filling' ? 90 : 60
       const isEmergency = input.urgency === 'emergency'
+      const providerId = input.provider_id || null
       const slots = []
       let daysChecked = 0
 
@@ -237,14 +271,20 @@ async function runTool(
 
             if (slotStart <= new Date()) { continue }
 
-            const { data: conflict } = await db
+            // Build conflict query — filter by provider if specified
+            let conflictQuery = db
               .from('appointments')
               .select('id')
               .eq('clinic_id', clinicId)
               .eq('status', 'scheduled')
               .lt('start_time', slotEnd.toISOString())
               .gt('end_time', slotStart.toISOString())
-              .limit(1)
+
+            if (providerId) {
+              conflictQuery = conflictQuery.eq('provider_id', providerId)
+            }
+
+            const { data: conflict } = await conflictQuery.limit(1)
 
             if (!conflict || conflict.length === 0) {
               slots.push({
@@ -295,7 +335,8 @@ async function runTool(
           end_time: endTime.toISOString(),
           reason: input.reason || '',
           status: 'scheduled',
-          booked_via: 'web_agent'
+          booked_via: 'web_agent',
+          provider_id: input.provider_id || null
         })
         .select('id, start_time, appointment_type')
         .single()
@@ -417,7 +458,7 @@ TOOL USAGE — strictly enforced:
 2. When patient is identified: call get_patient_context immediately — before responding to their request.
 3. Use the context to answer proactively. If they say "cancel my appointment", you already know which ones they have — list them and ask which one.
 4. For billing/insurance questions: get_patient_context has insurance info. Give what you know, note that exact coverage is confirmed by the clinic.
-5. To book: ALWAYS call get_available_slots first, present the options, wait for patient to pick a specific slot, then call book_appointment. NEVER book without explicit patient confirmation of a specific time.
+5. To book: ALWAYS call get_available_slots first. If patient context includes assigned_dentist or assigned_hygienist, pass their id as provider_id to get_available_slots — say "I'll check Dr. X's availability for you." Present the options, wait for patient to pick a specific slot, then call book_appointment. NEVER book without explicit patient confirmation of a specific time.
 6. To cancel: call cancel_appointment with the appointment ID from context.
 7. To reschedule: cancel first, then get_available_slots, then book.
 
