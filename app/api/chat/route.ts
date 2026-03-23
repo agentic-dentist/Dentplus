@@ -4,7 +4,6 @@ import { classifyIntent } from '@/lib/agents/orchestrator'
 import { runConcierge } from '@/lib/agents/concierge'
 import { runAuditor } from '@/lib/agents/auditor'
 import { audit } from '@/lib/audit'
-import { lookupPatientByAuthId } from '@/lib/phi'
 import type { Anthropic } from '@anthropic-ai/sdk'
 
 export async function GET() {
@@ -37,8 +36,7 @@ export async function POST(request: Request) {
     }
 
     // ── Pre-identify patient if auth session passed ────────────────────────
-    // When a logged-in patient opens the booking widget, we resolve their
-    // identity server-side so the agent never needs to ask for their name.
+    // Inlined here — no need to add to lib/phi
     let preIdentifiedPatient: {
       external_ref: string
       display_name: string
@@ -46,9 +44,31 @@ export async function POST(request: Request) {
     } | null = null
 
     if (patientAuthId) {
-      const result = await lookupPatientByAuthId(patientAuthId, clinicId, db)
-      if (result) {
-        preIdentifiedPatient = result
+      try {
+        const { data: account } = await db
+          .from('patient_accounts')
+          .select('patient_id')
+          .eq('auth_id', patientAuthId)
+          .eq('clinic_id', clinicId)
+          .single()
+
+        if (account) {
+          const { data: patient } = await db
+            .from('patients')
+            .select('external_ref, full_name, preferred_language')
+            .eq('id', account.patient_id)
+            .single()
+
+          if (patient?.external_ref) {
+            preIdentifiedPatient = {
+              external_ref: patient.external_ref,
+              display_name: patient.full_name.split(' ')[0],
+              preferred_language: patient.preferred_language || 'en'
+            }
+          }
+        }
+      } catch {
+        // Not fatal — agent will ask for name as fallback
       }
     }
 
@@ -108,9 +128,9 @@ export async function POST(request: Request) {
       messages as Anthropic.MessageParam[],
       clinicId,
       clinic.name,
-      orchestratorResult.urgency === 'emergency',
-      db,
-      preIdentifiedPatient  // passes pre-identified patient to skip name ask
+      clinic.timezone || 'America/Toronto',
+      orchestratorResult,
+      preIdentifiedPatient
     )
 
     // ── Step 3: Async auditor ──────────────────────────────────────────────
