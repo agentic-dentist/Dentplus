@@ -21,6 +21,8 @@ const DAYS = [
   { label: 'Wednesday', short: 'Wed', num: 3 },
   { label: 'Thursday',  short: 'Thu', num: 4 },
   { label: 'Friday',    short: 'Fri', num: 5 },
+  { label: 'Saturday',  short: 'Sat', num: 6 },
+  { label: 'Sunday',    short: 'Sun', num: 0 },
 ]
 
 const DEFAULT_SCHEDULE: Schedule = {
@@ -29,6 +31,8 @@ const DEFAULT_SCHEDULE: Schedule = {
   3: { active: true,  start: '09:00', end: '17:00' },
   4: { active: true,  start: '09:00', end: '17:00' },
   5: { active: true,  start: '09:00', end: '17:00' },
+  6: { active: false, start: '09:00', end: '14:00' },
+  0: { active: false, start: '09:00', end: '14:00' },
 }
 
 const HOURS = Array.from({ length: 14 }, (_, i) => {
@@ -123,6 +127,8 @@ export default function MySchedulePage() {
         3: { active: false, start: '09:00', end: '17:00' },
         4: { active: false, start: '09:00', end: '17:00' },
         5: { active: false, start: '09:00', end: '17:00' },
+        6: { active: false, start: '09:00', end: '14:00' },
+        0: { active: false, start: '09:00', end: '14:00' },
       }
       const { data: rows } = await supabase
         .from('provider_schedules')
@@ -184,7 +190,6 @@ export default function MySchedulePage() {
   const exceptionDates = new Set(exceptions.map(e => e.exception_date))
 
   const getDayStatus = (dateStr: string, dow: number) => {
-    if (dow === 0 || dow === 6) return 'weekend'
     if (exceptionDates.has(dateStr)) return 'off'
     const daySchedule = schedule[dow]
     if (!daySchedule?.active) return 'not-working'
@@ -400,13 +405,13 @@ export default function MySchedulePage() {
               {months.map(month => {
                 // Calculate padding for first day of month
                 const firstDow = month.days[0].dow
-                const pad = firstDow === 0 ? 6 : firstDow - 1 // Mon-start grid
+                const pad = firstDow // Sun-start grid (0=Sun naturally maps to col 0)
 
                 return (
                   <div key={month.label} className="month-block">
                     <div className="month-label">{month.label}</div>
                     <div className="cal-grid">
-                      {['M','T','W','T','F','S','S'].map((d, i) => (
+                      {['S','M','T','W','T','F','S'].map((d, i) => (
                         <div key={i} className="dow-header">{d}</div>
                       ))}
                       {Array.from({ length: pad }, (_, i) => (

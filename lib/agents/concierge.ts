@@ -371,12 +371,8 @@ async function runTool(
       while (slots.length < targetSlots && daysChecked < 90) {
         const dayOfWeek = checkDate.getDay() // 0 = Sun, 6 = Sat
 
-        // Always skip weekends
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          checkDate.setDate(checkDate.getDate() + 1)
-          daysChecked++
-          continue
-        }
+        // Skip weekends ONLY if provider has no schedule row for that day
+        // (provider_schedules controls this — if they added Sat/Sun they work weekends)
 
         if (requestedProviderId) {
           // ── PATH A: Specific provider requested — enforce their schedule ──
