@@ -34,7 +34,7 @@ const TYPE_COLOR: Record<string, string> = {
 
 const PROVIDER_COLORS = ['#0EA5E9', '#6366F1', '#10B981', '#F59E0B', '#F43F5E', '#A78BFA']
 
-const HOURS = [8, 9, 10, 11, 13, 14, 15, 16]
+const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 
 export default function SchedulePage() {
   const [clinicId, setClinicId] = useState('')
@@ -52,7 +52,7 @@ export default function SchedulePage() {
     const today = new Date()
     const monday = new Date(today)
     monday.setDate(today.getDate() - today.getDay() + 1 + offset * 7)
-    return Array.from({ length: 5 }, (_, i) => {
+    return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(monday)
       d.setDate(monday.getDate() + i)
       return d
@@ -61,7 +61,7 @@ export default function SchedulePage() {
 
   const days = getWeekDays(weekOffset)
   const weekStart = days[0]
-  const weekEnd = days[4]
+  const weekEnd = days[6]
 
   useEffect(() => {
     const init = async () => {
