@@ -229,10 +229,10 @@ async function runTool(
         insurance: patient?.insurance_provider
           ? { provider: patient.insurance_provider, note: 'Exact coverage details will be confirmed by the clinic before your appointment.' }
           : { provider: null, note: 'No insurance on file. You can provide it when you arrive.' },
-        assigned_dentist: assignedDentistName
+        assigned_dentist: assignedDentistName && patient
           ? { name: assignedDentistName, id: patient.assigned_dentist_id, note: `This patient's dentist is ${assignedDentistName}. Offer their slots first when booking.` }
           : null,
-        assigned_hygienist: assignedHygienistName
+        assigned_hygienist: assignedHygienistName && patient
           ? { name: assignedHygienistName, id: patient.assigned_hygienist_id, note: `This patient's hygienist is ${assignedHygienistName}. Offer their slots for cleanings and checkups.` }
           : null
       })
