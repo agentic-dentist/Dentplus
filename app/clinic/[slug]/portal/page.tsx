@@ -41,6 +41,17 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting'>('appointments')
   const [loading, setLoading] = useState(true)
 
+  // Waitlist state
+  const [waitlistLoading, setWaitlistLoading] = useState(false)
+  const [waitlistDone, setWaitlistDone] = useState(false)
+  const [waitlistError, setWaitlistError] = useState('')
+  const [wlType, setWlType] = useState('cleaning')
+  const [wlUrgency, setWlUrgency] = useState('routine')
+  const [wlAnyTime, setWlAnyTime] = useState(true)
+  const [wlDays, setWlDays] = useState<string[]>([])
+  const [wlTimes, setWlTimes] = useState<string[]>([])
+  const [waitlistEntry, setWaitlistEntry] = useState<{ appointment_type: string; urgency: string; created_at: string } | null>(null)
+
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -97,6 +108,19 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
       ])
       setUpcoming(upcomingData || [])
       setPast(pastData || [])
+
+      // Check if patient is already on waitlist
+      const { data: wlData } = await supabase
+        .from('waiting_list')
+        .select('appointment_type, urgency, created_at')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('status', 'waiting')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (wlData) setWaitlistEntry(wlData)
+
       setLoading(false)
     }
     init()
@@ -113,6 +137,52 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   }
 
   const intakeStatus = patientInfo?.intake_status || 'incomplete'
+
+  // ── Waitlist functions ────────────────────────────────────────────────────
+  const toggleDay = (day: string) => setWlDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  const toggleTime = (time: string) => setWlTimes(prev => prev.includes(time) ? prev.filter(t => t !== time) : [...prev, time])
+
+  const submitWaitlist = async () => {
+    if (!patientId || !clinicId) return
+    setWaitlistLoading(true)
+    setWaitlistError('')
+
+    // Check for duplicate
+    const { data: existing } = await supabase
+      .from('waiting_list')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('patient_id', patientId)
+      .eq('appointment_type', wlType)
+      .eq('status', 'waiting')
+      .single()
+
+    if (existing) {
+      setWaitlistError(`You are already on the waitlist for a ${wlType}.`)
+      setWaitlistLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase.from('waiting_list').insert({
+      clinic_id: clinicId,
+      patient_id: patientId,
+      appointment_type: wlType,
+      urgency: wlUrgency,
+      any_time: wlAnyTime,
+      preferred_days: wlAnyTime ? [] : wlDays,
+      preferred_times: wlAnyTime ? [] : wlTimes,
+      status: 'waiting',
+      priority: wlUrgency === 'urgent' ? 2 : 1
+    }).select('appointment_type, urgency, created_at').single()
+
+    if (error || !data) {
+      setWaitlistError('Something went wrong. Please try again.')
+    } else {
+      setWaitlistEntry(data)
+      setWaitlistDone(true)
+    }
+    setWaitlistLoading(false)
+  }
 
   // ── Chat functions ──────────────────────────────────────────────────────
   const openBooking = () => {
@@ -454,11 +524,102 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
           ) : (
             <>
               <div className="section-title">Waiting list</div>
-              <div className="waitlist-card">
-                <div className="waitlist-title">Get notified of openings</div>
-                <div className="waitlist-sub">Join the waiting list and our AI agent will notify you when a slot opens that matches your needs.</div>
-                <button className="waitlist-btn" onClick={openBooking}>Join waiting list</button>
-              </div>
+              {waitlistEntry ? (
+                <div className="waitlist-card">
+                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
+                  <div className="waitlist-title">You are on the waitlist</div>
+                  <div className="waitlist-sub">
+                    We will contact you as soon as a <strong>{waitlistEntry.appointment_type}</strong> slot opens.
+                    {waitlistEntry.urgency === 'urgent' && ' Your request is marked as urgent.'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '8px' }}>
+                    Added {new Date(waitlistEntry.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+              ) : (
+                <div className="waitlist-card" style={{ textAlign: 'left', padding: '24px' }}>
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 700, color: '#0F172A', marginBottom: '4px' }}>Join the waiting list</div>
+                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px' }}>We will notify you when a slot opens that matches your needs.</div>
+
+                  {waitlistError && (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#DC2626', marginBottom: '14px' }}>
+                      {waitlistError}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '6px' }}>Appointment type</div>
+                    <select style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: '8px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', outline: 'none', background: 'white' }}
+                      value={wlType} onChange={e => setWlType(e.target.value)}>
+                      {['cleaning', 'checkup', 'filling', 'consultation', 'emergency'].map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '6px' }}>Urgency</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {['routine', 'urgent'].map(u => (
+                        <button key={u} onClick={() => setWlUrgency(u)}
+                          style={{ flex: 1, padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                            background: wlUrgency === u ? '#0F172A' : 'white',
+                            color: wlUrgency === u ? 'white' : '#64748B',
+                            borderColor: wlUrgency === u ? '#0F172A' : '#E2E8F0' }}>
+                          {u.charAt(0).toUpperCase() + u.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px' }}>Scheduling preference</div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748B', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={wlAnyTime} onChange={e => setWlAnyTime(e.target.checked)} />
+                        Any time works
+                      </label>
+                    </div>
+                    {!wlAnyTime && (
+                      <>
+                        <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '6px' }}>Preferred days</div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                          {['monday','tuesday','wednesday','thursday','friday'].map(day => (
+                            <button key={day} onClick={() => toggleDay(day)}
+                              style={{ padding: '5px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                                background: wlDays.includes(day) ? '#0F172A' : 'white',
+                                color: wlDays.includes(day) ? 'white' : '#64748B',
+                                borderColor: wlDays.includes(day) ? '#0F172A' : '#E2E8F0' }}>
+                              {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '6px' }}>Preferred times</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {['morning', 'afternoon', 'evening'].map(time => (
+                            <button key={time} onClick={() => toggleTime(time)}
+                              style={{ flex: 1, padding: '6px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                                background: wlTimes.includes(time) ? '#0F172A' : 'white',
+                                color: wlTimes.includes(time) ? 'white' : '#64748B',
+                                borderColor: wlTimes.includes(time) ? '#0F172A' : '#E2E8F0' }}>
+                              {time.charAt(0).toUpperCase() + time.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <button onClick={submitWaitlist} disabled={waitlistLoading}
+                    style={{ width: '100%', padding: '11px', background: '#0F172A', color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 500, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', marginTop: '4px', opacity: waitlistLoading ? .6 : 1 }}>
+                    {waitlistLoading ? 'Adding...' : 'Join waiting list'}
+                  </button>
+
+                  <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center', marginTop: '10px' }}>
+                    Or tell our AI agent — open <button onClick={openBooking} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: '12px', fontFamily: 'DM Sans, sans-serif', padding: 0 }}>booking chat</button> and say "add me to the waitlist"
+                  </div>
+                </div>
+              )}
             </>
           )}
         </main>

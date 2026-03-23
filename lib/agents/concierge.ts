@@ -398,6 +398,71 @@ async function runTool(
       )
     }
 
+    case 'join_waitlist': {
+      const validation = await validatePatientToken(input.external_ref, clinicId)
+      if (!validation.valid || !validation.internalId) {
+        return JSON.stringify({ success: false, error: 'Patient not found' })
+      }
+
+      // Check if already on waitlist for this appointment type
+      const { data: existing } = await db
+        .from('waiting_list')
+        .select('id')
+        .eq('clinic_id', clinicId)
+        .eq('patient_id', validation.internalId)
+        .eq('appointment_type', input.appointment_type)
+        .eq('status', 'waiting')
+        .single()
+
+      if (existing) {
+        return JSON.stringify({
+          success: false,
+          error: `You are already on the waitlist for a ${input.appointment_type}. We will contact you when a slot opens.`
+        })
+      }
+
+      const anyTime = input.any_time === true || input.any_time === 'true'
+
+      const { data, error } = await db
+        .from('waiting_list')
+        .insert({
+          clinic_id: clinicId,
+          patient_id: validation.internalId,
+          appointment_type: input.appointment_type,
+          urgency: input.urgency || 'routine',
+          any_time: anyTime,
+          preferred_days: anyTime ? [] : (input.preferred_days || []),
+          preferred_times: anyTime ? [] : (input.preferred_times || []),
+          notes: input.notes || null,
+          status: 'waiting',
+          priority: input.urgency === 'urgent' ? 2 : 1
+        })
+        .select('id')
+        .single()
+
+      if (error || !data) {
+        return JSON.stringify({ success: false, error: 'Could not add to waitlist. Please try again.' })
+      }
+
+      await audit({
+        clinic_id: clinicId,
+        action: 'waitlist_joined',
+        agent: 'concierge',
+        external_ref: input.external_ref,
+        metadata: {
+          appointment_type: input.appointment_type,
+          urgency: input.urgency,
+          any_time: anyTime
+        },
+        success: true
+      })
+
+      return JSON.stringify({
+        success: true,
+        message: `You have been added to the waitlist for a ${input.appointment_type}. We will contact you as soon as a slot opens${input.urgency === 'urgent' ? ' — your request has been marked as urgent' : ''}.`
+      })
+    }
+
     default:
       return JSON.stringify({ error: 'Unknown tool' })
   }
@@ -461,6 +526,7 @@ TOOL USAGE — strictly enforced:
 5. To book: ALWAYS call get_available_slots first. If patient context includes assigned_dentist or assigned_hygienist, pass their id as provider_id to get_available_slots — say "I'll check Dr. X's availability for you." Present the options, wait for patient to pick a specific slot, then call book_appointment. NEVER book without explicit patient confirmation of a specific time.
 6. To cancel: call cancel_appointment with the appointment ID from context.
 7. To reschedule: cancel first, then get_available_slots, then book.
+8. If no slots are available OR patient asks to join the waitlist: ask them (a) what procedure they need, (b) urgent or routine, (c) any day/time preference or any time works. Then call join_waitlist. Never add to waitlist without confirming appointment type and urgency first.
 
 EXAMPLE — pre-identified patient says "book a cleaning":
 BAD: "Could I get your full name please?"
