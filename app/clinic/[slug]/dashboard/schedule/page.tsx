@@ -126,12 +126,23 @@ export default function SchedulePage() {
     ? providers
     : providers.filter(p => p.id === activeProvider)
 
+  // Unassigned = appointments with no provider_id
+  const showUnassigned = activeProvider === 'all'
+  const unassignedApts = appointments.filter(a => !a.provider_id)
+
   const getApt = (day: Date, hour: number, providerId: string) => {
     return appointments.find(apt => {
       const d = new Date(apt.start_time)
       return d.toDateString() === day.toDateString() &&
         d.getHours() === hour &&
-        (apt.provider_id === providerId || (!apt.provider_id && activeProvider !== 'all'))
+        apt.provider_id === providerId
+    })
+  }
+
+  const getUnassignedApt = (day: Date, hour: number) => {
+    return unassignedApts.find(apt => {
+      const d = new Date(apt.start_time)
+      return d.toDateString() === day.toDateString() && d.getHours() === hour
     })
   }
 
@@ -237,23 +248,36 @@ export default function SchedulePage() {
                 <tr>
                   <th className="th-time"></th>
                   {days.map(day => (
-                    visibleProviders.map((prov, pi) => {
-                      const color = PROVIDER_COLORS[providers.indexOf(prov) % PROVIDER_COLORS.length]
-                      return (
-                        <th key={`${day.toISOString()}-${prov.id}`} className="th-provider">
-                          <div className="provider-bar" style={{ background: color }} />
+                    <>
+                      {visibleProviders.map((prov, pi) => {
+                        const color = PROVIDER_COLORS[providers.indexOf(prov) % PROVIDER_COLORS.length]
+                        return (
+                          <th key={`${day.toISOString()}-${prov.id}`} className="th-provider">
+                            <div className="provider-bar" style={{ background: color }} />
+                            <div className={`th-day ${isToday(day) ? 'today' : ''}`}>
+                              {day.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            </div>
+                            <div className="th-name" style={{ color, fontSize: '11px', fontWeight: 500 }}>
+                              {prov.full_name.split(' ')[0]} {prov.full_name.split(' ')[1]?.[0]}.
+                              <span style={{ color: '#94A3B8', marginLeft: '4px', fontSize: '10px' }}>
+                                {prov.role === 'hygienist' ? '· hyg' : '· dr'}
+                              </span>
+                            </div>
+                          </th>
+                        )
+                      })}
+                      {showUnassigned && unassignedApts.some(a => new Date(a.start_time).toDateString() === day.toDateString()) && (
+                        <th key={`${day.toISOString()}-unassigned`} className="th-provider">
+                          <div className="provider-bar" style={{ background: '#F59E0B' }} />
                           <div className={`th-day ${isToday(day) ? 'today' : ''}`}>
                             {day.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </div>
-                          <div className="th-name" style={{ color, fontSize: '11px', fontWeight: 500 }}>
-                            {prov.full_name.split(' ')[0]} {prov.full_name.split(' ')[1]?.[0]}.
-                            <span style={{ color: '#94A3B8', marginLeft: '4px', fontSize: '10px' }}>
-                              {prov.role === 'hygienist' ? '· hyg' : '· dr'}
-                            </span>
+                          <div className="th-name" style={{ color: '#F59E0B', fontSize: '11px', fontWeight: 500 }}>
+                            Unassigned
                           </div>
                         </th>
-                      )
-                    })
+                      )}
+                    </>
                   ))}
                 </tr>
               </thead>
@@ -262,29 +286,54 @@ export default function SchedulePage() {
                   <tr key={hour}>
                     <td className="td-time">{formatHour(hour)}</td>
                     {days.map(day => (
-                      visibleProviders.map((prov, pi) => {
-                        const apt = getApt(day, hour, prov.id)
-                        const color = apt ? (TYPE_COLOR[apt.appointment_type] || '#94A3B8') : null
-                        return (
-                          <td key={`${day.toISOString()}-${prov.id}-${hour}`} className="td-apt">
-                            {apt ? (
-                              <div className="apt-card" style={{ background: `${color}12`, borderLeftColor: color! }}>
-                                <div className="apt-patient">{apt.patients?.full_name || 'Unknown'}</div>
-                                <div className="apt-type">{apt.appointment_type}</div>
-                                <div className="apt-time">
-                                  {new Date(apt.start_time).toLocaleTimeString('en-CA', {
-                                    hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
-                                  })}
+                      <>
+                        {visibleProviders.map((prov, pi) => {
+                          const apt = getApt(day, hour, prov.id)
+                          const color = apt ? (TYPE_COLOR[apt.appointment_type] || '#94A3B8') : null
+                          return (
+                            <td key={`${day.toISOString()}-${prov.id}-${hour}`} className="td-apt">
+                              {apt ? (
+                                <div className="apt-card" style={{ background: `${color}12`, borderLeftColor: color! }}>
+                                  <div className="apt-patient">{apt.patients?.full_name || 'Unknown'}</div>
+                                  <div className="apt-type">{apt.appointment_type}</div>
+                                  <div className="apt-time">
+                                    {new Date(apt.start_time).toLocaleTimeString('en-CA', {
+                                      hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                                    })}
+                                  </div>
+                                  {apt.booked_via === 'web_agent' && <span className="ai-tag">AI</span>}
+                                  {apt.booked_via === 'matchmaker' && <span className="ai-tag" style={{background:'#FDF4FF',color:'#7C3AED'}}>ML</span>}
                                 </div>
-                                {apt.booked_via === 'web_agent' && <span className="ai-tag">AI</span>}
-                                {!apt.provider_id && <span className="unassigned-tag">Unassigned</span>}
-                              </div>
-                            ) : (
-                              <div className="empty-cell" />
-                            )}
+                              ) : (
+                                <div className="empty-cell" />
+                              )}
                           </td>
-                        )
-                      })
+                          )
+                        })}
+                        {showUnassigned && (() => {
+                          const apt = getUnassignedApt(day, hour)
+                          const color = apt ? (TYPE_COLOR[apt.appointment_type] || '#94A3B8') : null
+                          return unassignedApts.some(a => new Date(a.start_time).toDateString() === day.toDateString()) ? (
+                            <td key={`${day.toISOString()}-unassigned-${hour}`} className="td-apt">
+                              {apt ? (
+                                <div className="apt-card" style={{ background: `${color}12`, borderLeftColor: color! }}>
+                                  <div className="apt-patient">{apt.patients?.full_name || 'Unknown'}</div>
+                                  <div className="apt-type">{apt.appointment_type}</div>
+                                  <div className="apt-time">
+                                    {new Date(apt.start_time).toLocaleTimeString('en-CA', {
+                                      hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                                    })}
+                                  </div>
+                                  {apt.booked_via === 'web_agent' && <span className="ai-tag">AI</span>}
+                                  {apt.booked_via === 'matchmaker' && <span className="ai-tag" style={{background:'#FDF4FF',color:'#7C3AED'}}>ML</span>}
+                                </div>
+                              ) : (
+                                <div className="empty-cell" />
+                              )}
+                            </td>
+                          ) : null
+                        })()}
+                      </>
                     ))}
                   </tr>
                 ))}
