@@ -58,7 +58,7 @@ export default function SchedulePage() {
       const { data: staff } = await supabase.from('staff_accounts').select('id, clinic_id, role').eq('auth_id', user.id).single()
       if (!staff) return
       setClinicId(staff.clinic_id); setMyRole(staff.role); setMyStaffId(staff.id)
-      if (staff.role === 'dentist' || staff.role === 'hygienist') setActiveProvider(staff.id)
+      // All roles start in daily all-providers view for consistency
       const res  = await fetch(`/api/clinic/${staff.clinic_id}/providers`)
       const json = await res.json()
       setProviders(json.providers || [])
