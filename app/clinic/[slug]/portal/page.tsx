@@ -107,7 +107,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
           .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
           .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5),
-        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via')
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
           .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
           .lt('start_time', now).order('start_time', { ascending: false }).limit(10)
       ])
