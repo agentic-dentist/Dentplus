@@ -125,7 +125,6 @@ async function runTool(
       const now = new Date()
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
-      // Fetch all upcoming appointments
       const { data: upcoming } = await db
         .from('appointments')
         .select('id, start_time, end_time, appointment_type, status, reason')
@@ -136,7 +135,6 @@ async function runTool(
         .order('start_time')
         .limit(5)
 
-      // Fetch last past appointment (within last 30 days)
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
       const { data: recent } = await db
         .from('appointments')
@@ -148,7 +146,6 @@ async function runTool(
         .order('start_time', { ascending: false })
         .limit(1)
 
-      // Fetch insurance from patient record
       const { data: patient } = await db
         .from('patients')
         .select('insurance_provider, insurance_number')
@@ -161,7 +158,6 @@ async function runTool(
           hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
         })
 
-      // Also check yesterday's appointments (patient might say "my appointment today")
       const { data: todayPast } = await db
         .from('appointments')
         .select('id, start_time, appointment_type, status')
@@ -215,7 +211,6 @@ async function runTool(
       const slots = []
       let daysChecked = 0
 
-      // Get current date in Montreal time
       const nowInMontreal = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Toronto' }))
       const checkDate = new Date(nowInMontreal)
       if (!isEmergency) checkDate.setDate(checkDate.getDate() + 1)
@@ -226,25 +221,20 @@ async function runTool(
         if (dayOfWeek !== 0 && dayOfWeek !== 6) {
           const hours = isEmergency ? [8, 9, 10, 11] : [9, 10, 11, 14, 15, 16]
           for (const hour of hours) {
-            // Build slot time in Montreal timezone by constructing ISO string with offset
             const year = checkDate.getFullYear()
             const month = String(checkDate.getMonth() + 1).padStart(2, '0')
             const day = String(checkDate.getDate()).padStart(2, '0')
             const hourStr = String(hour).padStart(2, '0')
-            // Determine Montreal UTC offset (EST = -5, EDT = -4)
-            // We use a reliable method: format a known date and extract offset
             const testDate = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
             const montrealStr = testDate.toLocaleString('en-US', { timeZone: 'America/Toronto', hour12: false, hour: '2-digit', minute: '2-digit' })
             const utcStr = testDate.toLocaleString('en-US', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit' })
             const montrealHour = parseInt(montrealStr.split(':')[0]) % 24
             const utcHour = parseInt(utcStr.split(':')[0]) % 24
             const offsetHours = utcHour - montrealHour
-            // Create slot at the correct UTC time that equals the desired Montreal hour
             const slotStart = new Date(`${year}-${month}-${day}T${hourStr}:00:00`)
             slotStart.setHours(slotStart.getHours() + offsetHours)
             const slotEnd = new Date(slotStart.getTime() + duration * 60000)
 
-            // Skip past slots
             if (slotStart <= new Date()) { continue }
 
             const { data: conflict } = await db
@@ -284,7 +274,7 @@ async function runTool(
       return JSON.stringify({ slots })
     }
 
-        case 'book_appointment': {
+    case 'book_appointment': {
       const validation = await validatePatientToken(input.external_ref, clinicId)
       if (!validation.valid || !validation.internalId) {
         await auditValidationFailed(clinicId, validation.reason || 'Invalid token')
@@ -377,7 +367,12 @@ export async function runConcierge(
   clinicId: string,
   clinicName: string,
   timezone: string,
-  orchestratorContext: OrchestratorResult
+  orchestratorContext: OrchestratorResult,
+  preIdentifiedPatient?: {
+    external_ref: string
+    display_name: string
+    preferred_language: string
+  } | null
 ): Promise<string> {
   const db = createServerClient()
 
@@ -389,8 +384,22 @@ export async function runConcierge(
   const urgencyNote = orchestratorContext.urgency === 'emergency'
     ? '\nURGENT: Patient may be in pain. Be fast, empathetic, and offer the earliest slot first.' : ''
 
-  const system = `You are the AI front desk receptionist for ${clinicName}, a dental clinic in Montréal.${urgencyNote}
+  // Build pre-identified patient context block
+  const patientContext = preIdentifiedPatient
+    ? `
+PATIENT ALREADY IDENTIFIED — CRITICAL INSTRUCTIONS:
+The patient is logged into their account. You already know who they are.
+- Their first name is: ${preIdentifiedPatient.display_name}
+- Their secure token is: ${preIdentifiedPatient.external_ref}
+- Their preferred language is: ${preIdentifiedPatient.preferred_language === 'fr' ? 'French' : 'English'}
+- DO NOT ask for their name. You already know it.
+- On your very first response: call get_patient_context with external_ref="${preIdentifiedPatient.external_ref}" BEFORE saying anything.
+- After get_patient_context returns, greet them by first name and address their request directly.
+- Example first response: "Hi ${preIdentifiedPatient.display_name}! [answer their question using context]"`
+    : ''
 
+  const system = `You are the AI front desk receptionist for ${clinicName}, a dental clinic in Montréal.${urgencyNote}
+${patientContext}
 PERSONALITY:
 You are warm, efficient, and human. You talk like a real receptionist — not a chatbot.
 You are proactive: when you know something useful, you say it without being asked.
@@ -403,13 +412,18 @@ FORMATTING — strictly enforced:
 - Never repeat information the patient already gave you.
 
 TOOL USAGE — strictly enforced:
-1. When patient gives their name: call lookup_patient immediately.
+1. If PATIENT ALREADY IDENTIFIED section is present above: call get_patient_context immediately on your FIRST turn using the token provided. Do NOT ask for their name under any circumstances.
+   If no pre-identified patient: when the patient gives their name, call lookup_patient immediately.
 2. When patient is identified: call get_patient_context immediately — before responding to their request.
 3. Use the context to answer proactively. If they say "cancel my appointment", you already know which ones they have — list them and ask which one.
 4. For billing/insurance questions: get_patient_context has insurance info. Give what you know, note that exact coverage is confirmed by the clinic.
 5. To book: always call book_appointment with the patient's external_ref.
 6. To cancel: call cancel_appointment with the appointment ID from context.
 7. To reschedule: cancel first, then get_available_slots, then book.
+
+EXAMPLE — pre-identified patient says "book a cleaning":
+BAD: "Could I get your full name please?"
+GOOD: [call get_patient_context first, then] "Hi Carol! I have a few slots available for a cleaning — 1. Tuesday March 24 at 10 AM  2. Wednesday March 25 at 2 PM  3. Thursday March 26 at 9 AM. Which works best for you?"
 
 EXAMPLE — patient says "cancel my appointment":
 BAD: "I couldn't find any appointments for you."

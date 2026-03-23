@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import type { ClinicInfo } from '@/lib/clinic'
 
 interface Message { role: 'user' | 'assistant'; content: string }
@@ -10,41 +11,54 @@ export default function BookingWidget({ clinic }: { clinic: ClinicInfo }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [started, setStarted] = useState(false)
+  const [patientAuthId, setPatientAuthId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const color = clinic.primary_color || '#0EA5E9'
+  const supabase = createClient()
+
+  // Detect if a patient is already logged in
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setPatientAuthId(user.id)
+    })
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  const startConversation = async () => {
-    setStarted(true)
-    setLoading(true)
+  const sendToApi = async (msgs: Message[]) => {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello' }], clinicId: clinic.id })
+      body: JSON.stringify({
+        messages: msgs,
+        clinicId: clinic.id,
+        patientAuthId  // null if not logged in — agent will ask for name as normal
+      })
     })
-    const data = await res.json()
+    return res.json()
+  }
+
+  const startConversation = async () => {
+    setStarted(true)
+    setLoading(true)
+    const data = await sendToApi([{ role: 'user', content: 'Hello' }])
     setMessages([{ role: 'assistant', content: data.message }])
     setLoading(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return
-    const userMsg: Message = { role: 'user', content: input.trim() }
+  const sendMessage = async (overrideInput?: string) => {
+    const text = (overrideInput ?? input).trim()
+    if (!text || loading) return
+    const userMsg: Message = { role: 'user', content: text }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
     setLoading(true)
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: newMessages, clinicId: clinic.id })
-    })
-    const data = await res.json()
+    const data = await sendToApi(newMessages)
     setMessages([...newMessages, { role: 'assistant', content: data.message }])
     setLoading(false)
     setTimeout(() => inputRef.current?.focus(), 100)
@@ -107,7 +121,9 @@ export default function BookingWidget({ clinic }: { clinic: ClinicInfo }) {
           <div className="start-screen">
             <div className="start-icon" style={{ background: `${color}18` }}>🦷</div>
             <div className="start-title">Book your appointment</div>
-            <div className="start-sub">Our AI assistant will help you book in under 2 minutes — in English or French.</div>
+            <div className="start-sub">
+              Our AI assistant will help you book in under 2 minutes — in English or French.
+            </div>
             <button className="start-btn" style={{ background: color }} onClick={startConversation}>
               Start conversation
             </button>
@@ -118,7 +134,10 @@ export default function BookingWidget({ clinic }: { clinic: ClinicInfo }) {
               {messages.map((msg, i) => (
                 <div key={i} className={`bubble-wrap ${msg.role}`}>
                   {msg.role === 'assistant' && <div className="bot-icon">🤖</div>}
-                  <div className={`bubble ${msg.role}`} style={msg.role === 'user' ? { background: color } : {}}>
+                  <div
+                    className={`bubble ${msg.role}`}
+                    style={msg.role === 'user' ? { background: color } : {}}
+                  >
                     {msg.content}
                   </div>
                 </div>
@@ -141,7 +160,7 @@ export default function BookingWidget({ clinic }: { clinic: ClinicInfo }) {
                     key={chip}
                     className="chip"
                     style={{ borderColor: color, color }}
-                    onClick={() => { setInput(chip); setTimeout(() => sendMessage(), 0) }}
+                    onClick={() => sendMessage(chip)}
                   >
                     {chip}
                   </button>
@@ -163,10 +182,12 @@ export default function BookingWidget({ clinic }: { clinic: ClinicInfo }) {
                 <button
                   className="send-btn"
                   style={{ background: color }}
-                  onClick={sendMessage}
+                  onClick={() => sendMessage()}
                   disabled={loading || !input.trim()}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
                 </button>
               </div>
             </div>

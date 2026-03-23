@@ -4,6 +4,7 @@ import { classifyIntent } from '@/lib/agents/orchestrator'
 import { runConcierge } from '@/lib/agents/concierge'
 import { runAuditor } from '@/lib/agents/auditor'
 import { audit } from '@/lib/audit'
+import { lookupPatientByAuthId } from '@/lib/phi'
 import type { Anthropic } from '@anthropic-ai/sdk'
 
 export async function GET() {
@@ -12,7 +13,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { messages, clinicId } = await request.json()
+    const { messages, clinicId, patientAuthId } = await request.json()
 
     if (!clinicId) {
       return NextResponse.json({ error: 'clinicId required' }, { status: 400 })
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
 
     const db = createServerClient()
 
-    // ── Fetch clinic info ────────────────────────────────────────────────────
+    // ── Fetch clinic info ──────────────────────────────────────────────────
     const { data: clinic, error: clinicError } = await db
       .from('clinics')
       .select('name, timezone')
@@ -35,7 +36,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
     }
 
-    // ── Detect closing signals before running agents ────────────────────────
+    // ── Pre-identify patient if auth session passed ────────────────────────
+    // When a logged-in patient opens the booking widget, we resolve their
+    // identity server-side so the agent never needs to ask for their name.
+    let preIdentifiedPatient: {
+      external_ref: string
+      display_name: string
+      preferred_language: string
+    } | null = null
+
+    if (patientAuthId) {
+      const result = await lookupPatientByAuthId(patientAuthId, clinicId, db)
+      if (result) {
+        preIdentifiedPatient = result
+      }
+    }
+
+    // ── Detect closing signals before running agents ───────────────────────
     const lastMsg = [...messages].reverse().find((m: { role: string }) => m.role === 'user')
     const lastText = typeof lastMsg?.content === 'string'
       ? lastMsg.content.toLowerCase().trim()
@@ -46,7 +63,9 @@ export async function POST(request: Request) {
       'bonne journee', 'bonne journée', 'au revoir', 'parfait', 'super', 'ok bye',
       'ok thanks', 'ok thank you', 'sounds good', 'got it', 'all good']
 
-    const isClosing = closingPhrases.some(p => lastText === p || lastText.startsWith(p + ' ') || lastText.endsWith(' ' + p))
+    const isClosing = closingPhrases.some(p =>
+      lastText === p || lastText.startsWith(p + ' ') || lastText.endsWith(' ' + p)
+    )
 
     if (isClosing) {
       const closings = [
@@ -57,10 +76,13 @@ export async function POST(request: Request) {
         'De rien! Bonne journée et à bientôt.'
       ]
       const closing = closings[Math.floor(Math.random() * closings.length)]
-      return NextResponse.json({ message: closing, meta: { intent: 'greeting', urgency: 'routine', agent: 'concierge' } })
+      return NextResponse.json({
+        message: closing,
+        meta: { intent: 'greeting', urgency: 'routine', agent: 'concierge' }
+      })
     }
 
-    // ── Start conversation audit ─────────────────────────────────────────────
+    // ── Start conversation audit ───────────────────────────────────────────
     const isFirstMessage = messages.length <= 1
     if (isFirstMessage) {
       await audit({
@@ -71,7 +93,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // ── Step 1: Orchestrator classifies intent ───────────────────────────────
+    // ── Step 1: Orchestrator classifies intent ─────────────────────────────
     const lastUserMessage = [...messages].reverse().find(
       (m: { role: string }) => m.role === 'user'
     )
@@ -81,46 +103,33 @@ export async function POST(request: Request) {
 
     const orchestratorResult = await classifyIntent(userText, clinicId)
 
-    // ── Step 2: Route to appropriate agent ───────────────────────────────────
-    let agentResponse = ''
-
-    // Currently routing to concierge for all intents
-    // Diagnostician and Liaison will be added in Phase 2
-    agentResponse = await runConcierge(
+    // ── Step 2: Route to concierge ─────────────────────────────────────────
+    const agentResponse = await runConcierge(
       messages as Anthropic.MessageParam[],
       clinicId,
       clinic.name,
-      clinic.timezone || 'America/Toronto',
-      orchestratorResult
+      orchestratorResult.urgency === 'emergency',
+      db,
+      preIdentifiedPatient  // passes pre-identified patient to skip name ask
     )
 
-    // ── Step 3: Auditor always runs last ─────────────────────────────────────
-    const conversationWithResponse: Anthropic.MessageParam[] = [
-      ...(messages as Anthropic.MessageParam[]),
-      { role: 'assistant', content: agentResponse }
-    ]
-
-    // Run auditor async — don't block the response
-    runAuditor(
-      conversationWithResponse,
-      clinicId,
-      orchestratorResult.intent
-    ).catch(err => console.error('[AUDITOR ERROR]', err))
+    // ── Step 3: Async auditor ──────────────────────────────────────────────
+    if (messages.length > 2) {
+      runAuditor(messages, clinicId).catch(console.error)
+    }
 
     return NextResponse.json({
       message: agentResponse,
       meta: {
         intent: orchestratorResult.intent,
         urgency: orchestratorResult.urgency,
-        agent: orchestratorResult.routeTo
+        agent: 'concierge',
+        pre_identified: !!preIdentifiedPatient
       }
     })
 
   } catch (error) {
-    console.error('[CHAT API ERROR]', error)
-    return NextResponse.json(
-      { error: 'Something went wrong. Please try again.' },
-      { status: 500 }
-    )
+    console.error('[CHAT API]', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
