@@ -346,12 +346,29 @@ async function runTool(
         }
       }
 
+      // Helper: check if provider has a date exception (day off or custom hours)
+      const getException = async (providerId: string, dateObj: Date): Promise<{ isDayOff: boolean; start?: number; end?: number } | null> => {
+        const dateStr = dateObj.toLocaleDateString('en-CA', { timeZone: 'America/Toronto' }).slice(0, 10)
+        const { data } = await db
+          .from('provider_exceptions')
+          .select('is_day_off, start_time, end_time')
+          .eq('staff_id', providerId)
+          .eq('exception_date', dateStr)
+          .single()
+        if (!data) return null
+        return {
+          isDayOff: data.is_day_off,
+          start: data.start_time ? parseInt(data.start_time.split(':')[0]) : undefined,
+          end: data.end_time ? parseInt(data.end_time.split(':')[0]) : undefined,
+        }
+      }
+
       const nowInMontreal = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Toronto' }))
       const checkDate = new Date(nowInMontreal)
       if (!isEmergency) checkDate.setDate(checkDate.getDate() + 1)
       checkDate.setHours(0, 0, 0, 0)
 
-      while (slots.length < targetSlots && daysChecked < 21) {
+      while (slots.length < targetSlots && daysChecked < 90) {
         const dayOfWeek = checkDate.getDay() // 0 = Sun, 6 = Sat
 
         // Always skip weekends
@@ -378,8 +395,16 @@ async function runTool(
             continue
           }
 
-          const pStart = parseHour(schedule.start_time)
-          const pEnd   = parseHour(schedule.end_time)
+          // Check for date exception (day off or custom hours)
+          const exceptionA = await getException(requestedProviderId, checkDate)
+          if (exceptionA?.isDayOff) {
+            checkDate.setDate(checkDate.getDate() + 1)
+            daysChecked++
+            continue
+          }
+
+          const pStart = exceptionA?.start ?? parseHour(schedule.start_time)
+          const pEnd   = exceptionA?.end   ?? parseHour(schedule.end_time)
 
           // Generate on-the-hour candidates strictly within provider window
           for (let hour = pStart; hour + durationHours <= pEnd; hour++) {
@@ -427,10 +452,14 @@ async function runTool(
 
               if (!schedule) continue // Not working today
 
-              const pStart = parseHour(schedule.start_time)
-              const pEnd   = parseHour(schedule.end_time)
+              // Check for date exception
+              const exceptionB = await getException(provider.id, checkDate)
+              if (exceptionB?.isDayOff) continue
 
-              // Slot must fall within provider's working hours
+              const pStart = exceptionB?.start ?? parseHour(schedule.start_time)
+              const pEnd   = exceptionB?.end   ?? parseHour(schedule.end_time)
+
+              // Slot must fall within provider working hours
               if (hour < pStart || hour + durationHours > pEnd) continue
 
               if (!(await hasConflict(provider.id, slotStart, slotEnd))) {
