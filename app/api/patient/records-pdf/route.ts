@@ -240,7 +240,7 @@ export async function GET(request: Request) {
 
     const fileName = `DentPlus-Records-${patient.full_name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`
 
-    return new Response(pdfBuffer, {
+    return new Response(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${fileName}"`,
