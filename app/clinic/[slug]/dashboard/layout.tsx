@@ -23,6 +23,7 @@ const BASE_NAV: Record<Role, NavItem[]> = {
     { icon: '⬡', label: 'AI Agent',     path: 'dashboard/agent' },
     { icon: '◎', label: 'Reports',      path: 'dashboard/reports' },
     { icon: '◑', label: 'Waitlist',     path: 'dashboard/waitlist' },
+    { icon: '→', label: 'Referrals',    path: 'dashboard/referrals' },
     { icon: '🗓', label: 'My Schedule', path: 'dashboard/my-schedule' },
   ],
   hygienist: [

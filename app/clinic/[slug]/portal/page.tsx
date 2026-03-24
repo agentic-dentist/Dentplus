@@ -31,6 +31,16 @@ interface WaitlistOffer {
   urgency: string
 }
 
+interface Referral {
+  id: string
+  created_at: string
+  specialist_name: string
+  specialty: string
+  urgency: string
+  status: string
+  notes: string | null
+}
+
 interface Message { role: 'user' | 'assistant'; content: string }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -48,7 +58,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [patientId, setPatientId] = useState<string>('')
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
-  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting'>('appointments')
+  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals'>('appointments')
   const [loading, setLoading] = useState(true)
 
   // Waitlist state
@@ -68,6 +78,8 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   // Waitlist offer state
   const [waitlistOffer, setWaitlistOffer] = useState<WaitlistOffer | null>(null)
   const [offerResponding, setOfferResponding] = useState(false)
+
+  const [referrals, setReferrals] = useState<Referral[]>([])
 
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
@@ -150,6 +162,15 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .limit(1)
         .single()
       if (offerData) setWaitlistOffer(offerData)
+
+      // Load referrals
+      const { data: refData } = await supabase
+        .from('referrals')
+        .select('id, created_at, specialist_name, specialty, urgency, status, notes')
+        .eq('from_clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .order('created_at', { ascending: false })
+      setReferrals(refData || [])
 
       setLoading(false)
     }
@@ -334,6 +355,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     { icon: '▦', label: 'Appointments', key: 'appointments' },
     { icon: '◈', label: 'My info', key: 'profile' },
     { icon: '◷', label: 'Waitlist', key: 'waiting' },
+    { icon: '→', label: 'Referrals', key: 'referrals' },
   ]
 
   const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
@@ -676,6 +698,27 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </button>
                 )}
               </div>
+            </>
+          ) : tab === 'referrals' ? (
+            <>
+              <div className="section-title">My referrals</div>
+              {referrals.length === 0 ? (
+                <div className="empty">No referrals on file yet</div>
+              ) : (
+                <div className="card">
+                  {referrals.map(r => (
+                    <div key={r.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: '#6366F1' }} />
+                      <div className="apt-info">
+                        <div className="apt-type" style={{ textTransform: 'capitalize' }}>{r.specialty.replace('_', ' ')} — {r.specialist_name}</div>
+                        <div className="apt-time">{new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                        {r.notes && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{r.notes}</div>}
+                      </div>
+                      <span className={"apt-badge" + (r.status === 'sent' ? ' badge-upcoming' : ' badge-past')} style={{ textTransform: 'capitalize' }}>{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <>
