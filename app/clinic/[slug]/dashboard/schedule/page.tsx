@@ -8,6 +8,7 @@ interface Appointment {
   id: string; start_time: string; end_time: string
   appointment_type: string; reason: string; status: string
   booked_via: string; provider_id: string | null
+  patient_confirmed: boolean
   patients: { full_name: string } | null
 }
 
@@ -146,6 +147,7 @@ export default function SchedulePage() {
         .apt-time{font-size:10px;color:#94A3B8;margin-top:2px;font-family:'JetBrains Mono',monospace}
         .ai-tag{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:#EFF6FF;color:#0284C7;margin-top:2px;margin-right:3px}
         .ml-tag{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:#FDF4FF;color:#7C3AED;margin-top:2px}
+        .confirmed-tag{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:#F0FDF4;color:#16A34A;margin-top:2px;margin-left:2px}
         .empty-cell{min-height:48px}
         .legend{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;padding:0 4px}
         .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#64748B}
