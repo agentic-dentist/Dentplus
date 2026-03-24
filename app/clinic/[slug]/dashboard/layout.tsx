@@ -22,12 +22,14 @@ const BASE_NAV: Record<Role, NavItem[]> = {
     { icon: '◷', label: 'Schedule',     path: 'dashboard/schedule' },
     { icon: '⬡', label: 'AI Agent',     path: 'dashboard/agent' },
     { icon: '◎', label: 'Reports',      path: 'dashboard/reports' },
+    { icon: '◑', label: 'Waitlist',     path: 'dashboard/waitlist' },
     { icon: '🗓', label: 'My Schedule', path: 'dashboard/my-schedule' },
   ],
   hygienist: [
     { icon: '▦', label: 'Overview',     path: 'dashboard' },
     { icon: '◈', label: 'Patients',     path: 'dashboard/patients' },
     { icon: '◷', label: 'Schedule',     path: 'dashboard/schedule' },
+    { icon: '◑', label: 'Waitlist',     path: 'dashboard/waitlist' },
     { icon: '🗓', label: 'My Schedule', path: 'dashboard/my-schedule' },
   ],
   receptionist: [
@@ -35,6 +37,7 @@ const BASE_NAV: Record<Role, NavItem[]> = {
     { icon: '◈', label: 'Patients',  path: 'dashboard/patients' },
     { icon: '◷', label: 'Schedule',  path: 'dashboard/schedule' },
     { icon: '⬡', label: 'AI Agent',  path: 'dashboard/agent' },
+    { icon: '◑', label: 'Waitlist',  path: 'dashboard/waitlist' },
   ],
   billing: [
     { icon: '▦', label: 'Overview',  path: 'dashboard' },
