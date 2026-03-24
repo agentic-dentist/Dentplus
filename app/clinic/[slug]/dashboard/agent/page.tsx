@@ -21,8 +21,8 @@ interface OutreachEntry {
   message_text: string
   language: string
   created_at: string
-  patients: { full_name: string } | null
-  appointments: { appointment_type: string; start_time: string } | null
+  patients: { full_name: string }[] | { full_name: string } | null
+  appointments: { appointment_type: string; start_time: string }[] | { appointment_type: string; start_time: string } | null
 }
 
 interface MatchmakerRun {
