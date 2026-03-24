@@ -67,26 +67,34 @@ export default function SchedulePage() {
     init()
   }, [])
 
+  // ── Reload on window focus (picks up confirmation changes from portal) ────────
+  useEffect(() => {
+    const onFocus = () => { if (clinicId) loadApts(clinicId) }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [clinicId, offset, activeProvider])
+
   // ── Load appointments ────────────────────────────────────────────────────────
+  const loadApts = async (cid: string) => {
+    setLoading(true)
+    let start: Date, end: Date
+    if (isAllView) {
+      start = new Date(selectedDay); start.setHours(0, 0, 0, 0)
+      end   = new Date(selectedDay); end.setHours(23, 59, 59, 999)
+    } else {
+      start = new Date(weekDays[0]); start.setHours(0, 0, 0, 0)
+      end   = new Date(weekDays[6]); end.setHours(23, 59, 59, 999)
+    }
+    const { data } = await supabase.from('appointments').select('*, patients(full_name)')
+      .eq('clinic_id', cid).eq('status', 'scheduled')
+      .gte('start_time', start.toISOString()).lte('start_time', end.toISOString()).order('start_time')
+    setAppointments(data || [])
+    setLoading(false)
+  }
+
   useEffect(() => {
     if (!clinicId) return
-    const load = async () => {
-      setLoading(true)
-      let start: Date, end: Date
-      if (isAllView) {
-        start = new Date(selectedDay); start.setHours(0, 0, 0, 0)
-        end   = new Date(selectedDay); end.setHours(23, 59, 59, 999)
-      } else {
-        start = new Date(weekDays[0]); start.setHours(0, 0, 0, 0)
-        end   = new Date(weekDays[6]); end.setHours(23, 59, 59, 999)
-      }
-      const { data } = await supabase.from('appointments').select('*, patients(full_name)')
-        .eq('clinic_id', clinicId).eq('status', 'scheduled')
-        .gte('start_time', start.toISOString()).lte('start_time', end.toISOString()).order('start_time')
-      setAppointments(data || [])
-      setLoading(false)
-    }
-    load()
+    loadApts(clinicId)
   }, [clinicId, offset, activeProvider])
 
   // ── Switch view resets offset ────────────────────────────────────────────────
