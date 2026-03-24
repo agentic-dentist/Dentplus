@@ -45,7 +45,7 @@ export default function SplashPage() {
       }
 
       // Load clinic info via service role API (bypasses RLS for public page)
-      const res = await fetch(`/api/clinic/slug/info?slug=${slug}`)
+      const res = await fetch(`/api/public-clinic?slug=${slug}`)
       if (!res.ok) { setLoading(false); return }
       const clinicData = await res.json()
       setClinic(clinicData)
