@@ -6,9 +6,9 @@ export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
 
   // Strip port for local dev
-  const host = hostname.replace(':3000', '').replace(':3001', '')
+  const host = hostname.split(':')[0]
 
-  // Production domains
+  // Root domains — pass through normally
   const rootDomains = [
     'dentplus.ca',
     'www.dentplus.ca',
@@ -16,27 +16,27 @@ export async function middleware(request: NextRequest) {
     'localhost',
   ]
 
-  const isRootDomain = rootDomains.some(d => host === d || host.endsWith(d))
+  const isRootDomain = rootDomains.includes(host)
 
-  // If it's a subdomain (e.g. demo.dentplus.ca)
-  if (!isRootDomain && host.includes('.')) {
-    const slug = host.split('.')[0]
+  // Check if it's a subdomain of dentplus.ca
+  const isDentplusSubdomain = host.endsWith('.dentplus.ca') && !isRootDomain
 
-    // Skip non-clinic subdomains
+  if (isDentplusSubdomain) {
+    const slug = host.replace('.dentplus.ca', '')
+
+    // Skip reserved subdomains
     if (['www', 'app', 'api', 'superadmin'].includes(slug)) {
       return NextResponse.next()
     }
 
-    // Rewrite subdomain requests to /clinic/[slug] internally
-    // e.g. demo.dentplus.ca/portal → /clinic/demo/portal
     const path = url.pathname
 
-    // Already has /clinic/ prefix — pass through
+    // Already internally rewritten — pass through
     if (path.startsWith('/clinic/')) {
       return NextResponse.next()
     }
 
-    // Rewrite to clinic path
+    // Rewrite: demo.dentplus.ca/portal → /clinic/demo/portal
     url.pathname = `/clinic/${slug}${path === '/' ? '' : path}`
     return NextResponse.rewrite(url)
   }
@@ -46,7 +46,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all paths except static files and api routes that don't need rewriting
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
