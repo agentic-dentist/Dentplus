@@ -44,30 +44,11 @@ export default function SplashPage() {
         return
       }
 
-      // Load clinic info
-      const { data: settings } = await supabase
-        .from('clinic_settings')
-        .select('clinic_id, slug')
-        .eq('slug', slug)
-        .single()
-
-      if (!settings) { setLoading(false); return }
-
-      const { data: clinicData } = await supabase
-        .from('clinics')
-        .select('id, name, address_line1, phone, primary_color')
-        .eq('id', settings.clinic_id)
-        .single()
-
-      if (clinicData) {
-        setClinic({
-          id: clinicData.id,
-          name: clinicData.name,
-          address: (clinicData as Record<string, unknown>).address_line1 as string | null,
-          phone: clinicData.phone,
-          primary_color: clinicData.primary_color,
-        })
-      }
+      // Load clinic info via service role API (bypasses RLS for public page)
+      const res = await fetch(`/api/clinic/slug/info?slug=${slug}`)
+      if (!res.ok) { setLoading(false); return }
+      const clinicData = await res.json()
+      setClinic(clinicData)
       setLoading(false)
     }
     init()
