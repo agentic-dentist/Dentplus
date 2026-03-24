@@ -119,6 +119,7 @@ export default function SchedulePage() {
         <div className="apt-time">{new Date(apt.start_time).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })}</div>
         {apt.booked_via === 'web_agent'  && <span className="ai-tag">AI</span>}
         {apt.booked_via === 'matchmaker' && <span className="ml-tag">ML</span>}
+        {apt.patient_confirmed && <span className="confirmed-tag">✓ Confirmed</span>}
       </div>
     )
   }
