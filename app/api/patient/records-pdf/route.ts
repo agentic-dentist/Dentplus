@@ -82,24 +82,28 @@ async function generatePDF(data: PatientRecordData): Promise<Buffer> {
     if (medical) {
       doc.moveDown(0.5)
       sectionHeader('3. Medical History')
-      if (medical.allergies?.length > 0) {
+      const allergies = medical.allergies as string[] | null
+      const medications = medical.medications as string[] | string | null
+      const conditions = medical.conditions as string[] | string | null
+      if (allergies && allergies.length > 0) {
         doc.fontSize(10).font('Helvetica-Bold').fillColor('#DC2626').text('Allergies: ', { continued: true })
-        doc.font('Helvetica').fillColor('#0F172A').text(medical.allergies.join(', '))
+        doc.font('Helvetica').fillColor('#0F172A').text(allergies.join(', '))
       }
-      field('Medications', Array.isArray(medical.medications) ? medical.medications.join(', ') : medical.medications)
-      field('Medical conditions', Array.isArray(medical.conditions) ? medical.conditions.join(', ') : medical.conditions)
-      field('Blood type', medical.blood_type)
-      if (medical.medical_notes) field('Notes', medical.medical_notes, false)
+      field('Medications', Array.isArray(medications) ? medications.join(', ') : medications as string | null)
+      field('Medical conditions', Array.isArray(conditions) ? conditions.join(', ') : conditions as string | null)
+      field('Blood type', medical.blood_type as string | null)
+      if (medical.medical_notes) field('Notes', medical.medical_notes as string, false)
     }
 
     // ── 4. Dental history ─────────────────────────────────────────────────────
     if (dental) {
       doc.moveDown(0.5)
       sectionHeader('4. Dental History')
-      field('Last dental visit', dental.last_dental_visit)
-      field('Dental anxiety', dental.dental_anxiety ? 'Yes' : 'No')
-      const conditions = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj'].filter(k => dental[k])
+      const dentalConditionKeys = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj']
+      const conditions = dentalConditionKeys.filter(k => dental[k] === true)
       if (conditions.length > 0) field('Dental conditions', conditions.map((k: string) => k.replace(/has_|had_/g, '').replace(/_/g, ' ')).join(', '))
+      field('Last dental visit', dental.last_dental_visit as string | null)
+      if (dental.dental_anxiety !== undefined) field('Dental anxiety', (dental.dental_anxiety as boolean) ? 'Yes' : 'No')
     }
 
     // ── 5. Appointment history ────────────────────────────────────────────────
@@ -134,7 +138,7 @@ async function generatePDF(data: PatientRecordData): Promise<Buffer> {
     if (consents) {
       doc.moveDown(0.5)
       sectionHeader('7. Consents')
-      const consentFields = [
+      const consentFields: [string, unknown][] = [
         ['Treatment consent', consents.consent_treatment],
         ['PIPEDA / Privacy', consents.consent_pipeda],
         ['Email communications', consents.consent_communication_email],
@@ -146,8 +150,8 @@ async function generatePDF(data: PatientRecordData): Promise<Buffer> {
       })
       if (consents.signature_text) {
         doc.moveDown(0.3)
-        field('Electronic signature', consents.signature_text)
-        if (consents.signed_at) field('Signed', new Date(consents.signed_at).toLocaleDateString('en-CA'))
+        field('Electronic signature', consents.signature_text as string)
+        if (consents.signed_at) field('Signed', new Date(consents.signed_at as string).toLocaleDateString('en-CA'))
       }
     }
 
