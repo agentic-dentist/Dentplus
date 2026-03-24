@@ -85,7 +85,7 @@ export default function SchedulePage() {
       start = new Date(weekDays[0]); start.setHours(0, 0, 0, 0)
       end   = new Date(weekDays[6]); end.setHours(23, 59, 59, 999)
     }
-    const { data } = await supabase.from('appointments').select('*, patients(full_name)')
+    const { data } = await supabase.from('appointments').select('id, start_time, end_time, appointment_type, reason, status, booked_via, provider_id, patient_confirmed, patients(full_name)')
       .eq('clinic_id', cid).eq('status', 'scheduled')
       .gte('start_time', start.toISOString()).lte('start_time', end.toISOString()).order('start_time')
     setAppointments(data || [])
