@@ -377,17 +377,167 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     if (!patientAuthId || !clinicId) return
     setDownloadingPDF(true)
     try {
+      // Fetch record data from API
       const res = await fetch(`/api/patient/records-pdf?patientAuthId=${patientAuthId}&clinicId=${clinicId}`)
-      if (!res.ok) throw new Error('Failed to generate PDF')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `DentPlus-Records-${patientInfo?.full_name.replace(/\s+/g, '-') || 'Patient'}-${new Date().toISOString().slice(0,10)}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      if (!res.ok) throw new Error('Failed to fetch records')
+      const data = await res.json()
+
+      // Generate PDF client-side using jsPDF
+      const { jsPDF } = await import('jspdf')
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+      const pageW = 210
+      const margin = 15
+      const contentW = pageW - margin * 2
+      let y = 20
+
+      const addPage = () => { doc.addPage(); y = 20 }
+      const checkPage = (needed = 10) => { if (y + needed > 280) addPage() }
+
+      const h1 = (text: string) => {
+        checkPage(12)
+        doc.setFontSize(16).setFont('helvetica', 'bold').setTextColor(15, 23, 42)
+        doc.text(text, pageW / 2, y, { align: 'center' })
+        y += 8
+      }
+      const h2 = (text: string) => {
+        checkPage(10)
+        doc.setFontSize(11).setFont('helvetica', 'bold').setTextColor(14, 165, 233)
+        doc.text(text, margin, y)
+        doc.setDrawColor(226, 232, 240)
+        doc.line(margin, y + 1.5, pageW - margin, y + 1.5)
+        y += 7
+      }
+      const field = (label: string, value: string | null | undefined) => {
+        if (!value) return
+        checkPage(6)
+        doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(100, 116, 139)
+        doc.text(label + ':', margin, y)
+        doc.setFont('helvetica', 'normal').setTextColor(15, 23, 42)
+        const lines = doc.splitTextToSize(value, contentW - 42)
+        doc.text(lines, margin + 42, y)
+        y += Math.max(5, lines.length * 4.5)
+      }
+      const sub = (text: string, color: [number,number,number] = [100,116,139]) => {
+        checkPage(5)
+        doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(...color)
+        const lines = doc.splitTextToSize(text, contentW)
+        doc.text(lines, margin, y)
+        y += lines.length * 4.5
+      }
+
+      // Header
+      h1('Patient Medical Record')
+      doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100,116,139)
+      doc.text(data.clinicName, pageW/2, y, { align: 'center' }); y += 5
+      doc.text('Generated: ' + new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }), pageW/2, y, { align: 'center' }); y += 10
+
+      // Allergy banner
+      if (data.allergies?.length > 0) {
+        checkPage(10)
+        doc.setFillColor(254,242,242).roundedRect(margin, y, contentW, 8, 2, 2, 'F')
+        doc.setFontSize(9).setFont('helvetica','bold').setTextColor(220,38,38)
+        doc.text('⚠ Allergies: ' + data.allergies.join(', '), margin + 3, y + 5.5)
+        y += 12
+      }
+
+      // 1. Patient info
+      h2('1. Patient Information')
+      field('Full name', data.patient?.full_name)
+      field('Date of birth', data.patient?.date_of_birth ? new Date(data.patient.date_of_birth + 'T12:00:00').toLocaleDateString('en-CA') : null)
+      field('Phone', data.patient?.phone_primary)
+      field('Email', data.patient?.email)
+      field('Address', [data.patient?.address_line1, data.patient?.city, data.patient?.postal_code].filter(Boolean).join(', ') || null)
+      if (data.patient?.emergency_contact_name) {
+        field('Emergency contact', `${data.patient.emergency_contact_name} (${data.patient.emergency_contact_relationship || 'Contact'}) — ${data.patient.emergency_contact_phone || '—'}`)
+      }
+      y += 3
+
+      // 2. Insurance
+      if (data.insurance) {
+        h2('2. Insurance')
+        field('Provider', data.insurance.insurance_provider)
+        field('Policy number', data.insurance.insurance_number)
+        field('Policy holder', data.insurance.policy_holder_name)
+        if (data.insurance.secondary_provider) field('Secondary provider', data.insurance.secondary_provider)
+        y += 3
+      }
+
+      // 3. Medical history
+      if (data.medical) {
+        h2('3. Medical History')
+        if (data.allergies?.length > 0) field('Allergies', data.allergies.join(', '))
+        field('Medications', Array.isArray(data.medical.medications) ? data.medical.medications.join(', ') : data.medical.medications)
+        field('Conditions', Array.isArray(data.medical.conditions) ? data.medical.conditions.join(', ') : data.medical.conditions)
+        field('Blood type', data.medical.blood_type)
+        y += 3
+      }
+
+      // 4. Dental history
+      if (data.dental) {
+        h2('4. Dental History')
+        field('Last visit', data.dental.last_dental_visit)
+        if (data.dental.dental_anxiety) field('Dental anxiety', 'Yes')
+        if (data.dentalConditions) field('Conditions', data.dentalConditions)
+        y += 3
+      }
+
+      // 5. Appointments
+      if (data.appointments?.length > 0) {
+        h2('5. Appointment History')
+        data.appointments.forEach((apt: Record<string, string>) => {
+          checkPage(7)
+          const dt = new Date(apt.start_time).toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric', timeZone:'America/Toronto' })
+          doc.setFontSize(9).setFont('helvetica','bold').setTextColor(15,23,42)
+          doc.text(dt + ' — ' + apt.appointment_type.charAt(0).toUpperCase() + apt.appointment_type.slice(1), margin, y)
+          doc.setFont('helvetica','normal').setTextColor(100,116,139)
+          doc.text('Status: ' + apt.status + (apt.reason ? ' · ' + apt.reason : ''), margin + 4, y + 4)
+          y += 9
+        })
+        y += 3
+      }
+
+      // 6. Visit notes
+      if (data.treatmentNotes?.length > 0) {
+        h2('6. Visit Notes')
+        data.treatmentNotes.forEach((note: Record<string, string>) => {
+          checkPage(20)
+          doc.setFillColor(248,250,252).roundedRect(margin, y, contentW, 2, 1, 1, 'F')
+          doc.setFontSize(9).setFont('helvetica','bold').setTextColor(15,23,42)
+          const noteHeader = new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' }) + (note.appointment_type ? ' — ' + note.appointment_type : '') + (note.written_by_name ? ' · ' + note.written_by_name : '')
+          doc.text(noteHeader, margin, y + 5); y += 8
+          if (note.findings) { sub('Findings: ' + note.findings); y += 1 }
+          if (note.treatment_done) { sub('Treatment: ' + note.treatment_done); y += 1 }
+          if (note.next_steps) { sub('Next steps: ' + note.next_steps, [14,165,233]); y += 1 }
+          y += 4
+        })
+      }
+
+      // 7. Consents
+      if (data.consents) {
+        h2('7. Consents')
+        const consentMap = [['Treatment consent', data.consents.consent_treatment], ['PIPEDA / Privacy', data.consents.consent_pipeda], ['Email communications', data.consents.consent_communication_email], ['SMS reminders', data.consents.consent_communication_sms]]
+        consentMap.forEach(([label, val]) => {
+          checkPage(5)
+          doc.setFontSize(9).setFont('helvetica','normal').setTextColor(val ? 16 : 244, val ? 185 : 63, val ? 129 : 94)
+          doc.text((val ? '✓ ' : '✗ ') + label, margin, y); y += 5
+        })
+        if (data.consents.signature_text) {
+          y += 2
+          field('Signed by', data.consents.signature_text + (data.consents.signed_at ? ' on ' + new Date(data.consents.signed_at).toLocaleDateString('en-CA') : ''))
+        }
+      }
+
+      // Footer
+      const totalPages = (doc.internal as any).getNumberOfPages()
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        doc.setFontSize(7).setFont('helvetica','normal').setTextColor(148,163,184)
+        doc.text(`Generated by DentPlus for ${data.clinicName} — Confidential patient record — Page ${i} of ${totalPages}`, pageW/2, 290, { align: 'center' })
+      }
+
+      const fileName = `DentPlus-Records-${data.patient?.full_name?.replace(/\s+/g,'-') || 'Patient'}-${new Date().toISOString().slice(0,10)}.pdf`
+      doc.save(fileName)
     } catch (err) {
       console.error(err)
       alert('Could not generate PDF. Please try again.')
@@ -729,7 +879,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   onClick={downloadRecords}
                   disabled={downloadingPDF}
                   style={{ padding: '7px 16px', background: '#0F172A', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif', opacity: downloadingPDF ? .6 : 1 }}>
-                  {downloadingPDF ? 'Generating...' : '↓ Download my records'}
+                  {downloadingPDF ? 'Generating PDF...' : '↓ Download my records'}
                 </button>
               </div>
               <div className="status-row">
