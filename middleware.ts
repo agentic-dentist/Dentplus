@@ -4,11 +4,8 @@ import type { NextRequest } from 'next/server'
 export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone()
   const hostname = request.headers.get('host') || ''
-
-  // Strip port for local dev
   const host = hostname.split(':')[0]
 
-  // Root domains — pass through normally
   const rootDomains = [
     'dentplus.ca',
     'www.dentplus.ca',
@@ -17,22 +14,24 @@ export async function middleware(request: NextRequest) {
   ]
 
   const isRootDomain = rootDomains.includes(host)
-
-  // Check if it's a subdomain of dentplus.ca
   const isDentplusSubdomain = host.endsWith('.dentplus.ca') && !isRootDomain
 
   if (isDentplusSubdomain) {
     const slug = host.replace('.dentplus.ca', '')
 
-    // Skip reserved subdomains
     if (['www', 'app', 'api', 'superadmin'].includes(slug)) {
       return NextResponse.next()
     }
 
     const path = url.pathname
 
-    // Already internally rewritten — pass through
-    if (path.startsWith('/clinic/')) {
+    // Never rewrite API routes, static files, or already-rewritten paths
+    if (
+      path.startsWith('/api/') ||
+      path.startsWith('/clinic/') ||
+      path.startsWith('/_next/') ||
+      path.startsWith('/favicon')
+    ) {
       return NextResponse.next()
     }
 
@@ -45,7 +44,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
