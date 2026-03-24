@@ -9,7 +9,7 @@ interface Appointment {
   appointment_type: string; reason: string; status: string
   booked_via: string; provider_id: string | null
   patient_confirmed: boolean
-  patients: { full_name: string } | null
+  patients: { full_name: string }[] | { full_name: string } | null
 }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -114,7 +114,7 @@ export default function SchedulePage() {
     const color = TYPE_COLOR[apt.appointment_type] || '#94A3B8'
     return (
       <div className="apt-card" style={{ background: `${color}12`, borderLeftColor: color }}>
-        <div className="apt-patient">{apt.patients?.full_name || 'Unknown'}</div>
+        <div className="apt-patient">{(Array.isArray(apt.patients) ? apt.patients[0]?.full_name : apt.patients?.full_name) || 'Unknown'}</div>
         <div className="apt-type">{apt.appointment_type}</div>
         <div className="apt-time">{new Date(apt.start_time).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })}</div>
         {apt.booked_via === 'web_agent'  && <span className="ai-tag">AI</span>}
