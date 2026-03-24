@@ -34,7 +34,7 @@ interface Referral {
   specialist_name: string
   notes: string | null
   is_on_dentplus: boolean
-  patients: { full_name: string } | null
+  patients: { full_name: string }[] | { full_name: string } | null
 }
 
 const SPECIALTIES = [
