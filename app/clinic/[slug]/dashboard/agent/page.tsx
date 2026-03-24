@@ -308,11 +308,13 @@ export default function AgentPage() {
                       {agent && <span className="agent-pill">{agent}</span>}
                     </div>
                     <div className="feed-meta">
-                      {entry.entity_type && `${entry.entity_type}`}
-                      {entry.metadata?.appointment_type && ` · ${String(entry.metadata.appointment_type)}`}
-                      {entry.metadata?.slots_found !== undefined && ` · ${String(entry.metadata.slots_found)} slots found`}
-                      {entry.metadata?.candidate_count !== undefined && ` · ${String(entry.metadata.candidate_count)} candidates`}
-                      {entry.metadata?.channel && ` · ${String(entry.metadata.channel)}`}
+                      {[
+                        entry.entity_type || null,
+                        entry.metadata?.appointment_type ? `${String(entry.metadata.appointment_type)}` : null,
+                        entry.metadata?.slots_found !== undefined ? `${String(entry.metadata.slots_found)} slots found` : null,
+                        entry.metadata?.candidate_count !== undefined ? `${String(entry.metadata.candidate_count)} candidates` : null,
+                        entry.metadata?.channel ? String(entry.metadata.channel) : null,
+                      ].filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   <div className="feed-time">{formatTime(entry.created_at)}</div>
