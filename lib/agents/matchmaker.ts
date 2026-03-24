@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { audit } from '@/lib/audit'
+import { runOutreach } from './outreach'
 
 interface CancelledSlot {
   clinicId: string
@@ -220,6 +221,45 @@ export async function runMatchmaker(slot: CancelledSlot): Promise<{
     },
     success: true,
   })
+
+  // ── Step 5: Fire outreach async — send SMS/email to top candidate ──────
+  // Fetch patient contact details for outreach
+  const { data: patient } = await db
+    .from('patients')
+    .select('phone_primary, email, preferred_language')
+    .eq('id', top.patientId)
+    .single()
+
+  const { data: clinic } = await db
+    .from('clinics')
+    .select('name')
+    .eq('id', slot.clinicId)
+    .single()
+
+  const slotDisplay = new Date(slot.startTime).toLocaleDateString('en-CA', {
+    weekday: 'long', month: 'long', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+  })
+
+  if (patient) {
+    // Prefer SMS if phone available, fallback to email
+    const channel = patient.phone_primary ? 'sms' : 'email'
+
+    runOutreach({
+      clinicId:          slot.clinicId,
+      patientId:         top.patientId,
+      patientName:       top.fullName,
+      patientPhone:      patient.phone_primary,
+      patientEmail:      patient.email,
+      preferredLanguage: (patient.preferred_language || 'en') as 'en' | 'fr',
+      outreachType:      'slot_offer',
+      channel,
+      appointmentType:   slot.appointmentType,
+      appointmentTime:   slotDisplay,
+      clinicName:        clinic?.name,
+      waitlistId:        top.waitlistId,
+    }).catch(err => console.error('[OUTREACH FROM MATCHMAKER]', err))
+  }
 
   return {
     matched: true,
