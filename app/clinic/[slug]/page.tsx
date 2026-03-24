@@ -195,7 +195,7 @@ export default function SplashPage() {
                 onClick={() => { setMode('login'); setError('') }}>
                 Sign in
               </button>
-              <a href={`/clinic/${slug}/staff-login`} className="staff-link">
+              <a href={`/clinic/${slug}/login`} className="staff-link">
                 Staff & clinic owner login →
               </a>
             </>
@@ -279,7 +279,7 @@ export default function SplashPage() {
                 New patient?{' '}
                 <button style={{ color }} onClick={() => { setMode('register'); setError('') }}>Create an account</button>
               </div>
-              <a href={`/clinic/${slug}/staff-login`} className="staff-link">
+              <a href={`/clinic/${slug}/login`} className="staff-link">
                 Staff & clinic owner login →
               </a>
             </>
