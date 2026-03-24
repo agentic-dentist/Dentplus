@@ -31,6 +31,16 @@ interface WaitlistOffer {
   urgency: string
 }
 
+interface TreatmentNote {
+  id: string
+  visit_date: string
+  appointment_type: string | null
+  written_by_name: string | null
+  findings: string | null
+  treatment_done: string | null
+  next_steps: string | null
+}
+
 interface Referral {
   id: string
   created_at: string
@@ -58,7 +68,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [patientId, setPatientId] = useState<string>('')
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
-  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals'>('appointments')
+  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes'>('appointments')
   const [loading, setLoading] = useState(true)
 
   // Waitlist state
@@ -80,6 +90,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [offerResponding, setOfferResponding] = useState(false)
 
   const [referrals, setReferrals] = useState<Referral[]>([])
+  const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
 
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
@@ -162,6 +173,16 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .limit(1)
         .single()
       if (offerData) setWaitlistOffer(offerData)
+
+      // Load treatment notes (non-private only)
+      const { data: notesData } = await supabase
+        .from('treatment_notes')
+        .select('id, visit_date, appointment_type, written_by_name, findings, treatment_done, next_steps')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('is_private', false)
+        .order('visit_date', { ascending: false })
+      setTreatmentNotes(notesData || [])
 
       // Load referrals
       const { data: refData } = await supabase
@@ -356,6 +377,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     { icon: '◈', label: 'My info', key: 'profile' },
     { icon: '◷', label: 'Waitlist', key: 'waiting' },
     { icon: '→', label: 'Referrals', key: 'referrals' },
+    { icon: '◎', label: 'Visit notes', key: 'notes' },
   ]
 
   const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
@@ -698,6 +720,27 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </button>
                 )}
               </div>
+            </>
+          ) : tab === 'notes' ? (
+            <>
+              <div className="section-title">Visit notes</div>
+              {treatmentNotes.length === 0 ? (
+                <div className="empty">No visit notes on file yet</div>
+              ) : (
+                <div className="card">
+                  {treatmentNotes.map(note => (
+                    <div key={note.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: '#6366F1' }} />
+                      <div className="apt-info">
+                        <div className="apt-type">{note.appointment_type || 'Visit'}</div>
+                        <div className="apt-time">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}{note.written_by_name ? ' · ' + note.written_by_name : ''}</div>
+                        {note.findings && <div style={{ fontSize: '12px', color: '#64748B', marginTop: '4px', lineHeight: '1.4' }}>{note.findings}</div>}
+                        {note.next_steps && <div style={{ fontSize: '11px', color: '#0EA5E9', marginTop: '4px' }}>Next steps: {note.next_steps}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : tab === 'referrals' ? (
             <>

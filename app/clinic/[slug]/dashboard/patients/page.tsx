@@ -27,6 +27,19 @@ interface Patient {
   intake_rejection_reason: string | null
 }
 
+interface TreatmentNote {
+  id: string
+  visit_date: string
+  appointment_type: string | null
+  written_by_name: string | null
+  chief_complaint: string | null
+  findings: string | null
+  treatment_done: string | null
+  next_steps: string | null
+  is_private: boolean
+  created_at: string
+}
+
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   incomplete:     { bg: '#F1F5F9', color: '#94A3B8', label: 'Incomplete' },
   pending_review: { bg: '#FEF3C7', color: '#D97706', label: 'Pending review' },
@@ -51,17 +64,71 @@ export default function PatientsPage() {
   const [assignmentSaved, setAssignmentSaved] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showReject, setShowReject] = useState(false)
+  const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
+  const [loadingNotes, setLoadingNotes] = useState(false)
+  const [showAddNote, setShowAddNote] = useState(false)
+  const [staffId, setStaffId] = useState('')
+  const [staffName, setStaffName] = useState('')
+  const [staffRole, setStaffRole] = useState('')
+  const [newNote, setNewNote] = useState({
+    chiefComplaint: '', findings: '', treatmentDone: '', nextSteps: '', isPrivate: false
+  })
+  const [savingNote, setSavingNote] = useState(false)
+  const [noteSaved, setNoteSaved] = useState(false)
+
   const supabase = createClient()
   const pathname = usePathname()
+
+  const loadTreatmentNotes = async (patientId: string) => {
+    setLoadingNotes(true)
+    const res = await fetch(`/api/treatment-notes?patientId=${patientId}&clinicId=${clinicId}`)
+    const data = await res.json()
+    setTreatmentNotes(data.notes || [])
+    setLoadingNotes(false)
+  }
+
+  const saveNote = async () => {
+    if (!selected || !newNote.findings.trim()) return
+    setSavingNote(true)
+    const res = await fetch('/api/treatment-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId,
+        patientId:       selected.id,
+        writtenBy:       staffId,
+        writtenByName:   staffName,
+        visitDate:       new Date().toISOString().slice(0, 10),
+        appointmentType: null,
+        chiefComplaint:  newNote.chiefComplaint,
+        findings:        newNote.findings,
+        treatmentDone:   newNote.treatmentDone,
+        nextSteps:       newNote.nextSteps,
+        isPrivate:       newNote.isPrivate,
+      })
+    })
+    const data = await res.json()
+    if (data.note) {
+      setTreatmentNotes(prev => [data.note, ...prev])
+      setNewNote({ chiefComplaint: '', findings: '', treatmentDone: '', nextSteps: '', isPrivate: false })
+      setShowAddNote(false)
+      setNoteSaved(true)
+      setTimeout(() => setNoteSaved(false), 3000)
+    }
+    setSavingNote(false)
+  }
 
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       const { data: staff } = await supabase.from('staff_accounts')
-        .select('clinic_id').eq('auth_id', user.id).single()
+        .select('id, clinic_id, full_name, role').eq('auth_id', user.id).single()
       if (!staff) return
       setClinicId(staff.clinic_id)
+      setStaffId(staff.id)
+      setStaffName(staff.full_name)
+      setStaffRole(staff.role)
 
       const { data } = await supabase.from('patients')
         .select('id, full_name, email, phone_primary, phone_secondary, insurance_provider, intake_status, created_at, date_of_birth, address_line1, city, postal_code, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, preferred_language, is_minor, guardian_name, guardian_phone, intake_rejection_reason')
@@ -101,8 +168,10 @@ export default function PatientsPage() {
     setLoadingDetail(true)
     setShowReject(false)
     setRejectionReason('')
+    setShowAddNote(false)
     setAssignedDentistId((patient as any).assigned_dentist_id || '')
     setAssignedHygienistId((patient as any).assigned_hygienist_id || '')
+    loadTreatmentNotes(patient.id)
 
     // Get latest record for each table using order + limit
     const [{ data: medicalRows }, { data: dentalRow }, { data: insurance }, { data: consents }] = await Promise.all([
@@ -264,6 +333,32 @@ export default function PatientsPage() {
         .btn-cancel-sm{background:#F8FAFC;color:#475569;border:1.5px solid #E2E8F0!important}
         .btn-confirm-reject{background:#F87171;color:white}
         .loading-panel{text-align:center;padding:48px;color:#CBD5E1;font-size:13px}
+        .notes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+        .add-note-btn{padding:5px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;font-weight:500;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
+        .add-note-btn:hover{border-color:#0EA5E9;color:#0EA5E9}
+        .note-card{background:#F8FAFC;border-radius:9px;padding:14px;margin-bottom:10px;border:1px solid #F1F5F9}
+        .note-card:last-child{margin-bottom:0}
+        .note-meta{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+        .note-date{font-size:12px;font-weight:600;color:#0F172A;font-family:'JetBrains Mono',monospace}
+        .note-author{font-size:11px;color:#94A3B8}
+        .private-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#FEF3C7;color:#D97706}
+        .note-field{margin-bottom:8px}
+        .note-field:last-child{margin-bottom:0}
+        .note-field-label{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+        .note-field-val{font-size:13px;color:#0F172A;line-height:1.5}
+        .note-form{background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:10px;padding:16px;margin-bottom:12px}
+        .note-form-title{font-size:13px;font-weight:600;color:#0F172A;margin-bottom:12px}
+        .note-textarea{width:100%;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;min-height:60px;transition:border-color .15s}
+        .note-textarea:focus{border-color:#0EA5E9}
+        .note-label{display:block;font-size:11px;font-weight:500;color:#64748B;margin-bottom:4px;margin-top:10px}
+        .note-label:first-child{margin-top:0}
+        .note-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+        .note-save-btn{padding:8px 18px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:background .15s}
+        .note-save-btn:hover{background:#1E293B}
+        .note-save-btn:disabled{opacity:.6;cursor:not-allowed}
+        .note-save-btn.saved{background:#10B981}
+        .note-cancel-btn{padding:8px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .private-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#64748B;cursor:pointer;margin-left:auto}
       `}</style>
 
       <div className="header">
@@ -610,6 +705,95 @@ export default function PatientsPage() {
                     <div className="section">
                       <div className="section-label">Consents</div>
                       <div className="no-data">Not submitted yet</div>
+                    </div>
+                  )}
+
+                  {/* Treatment Notes */}
+                  {(staffRole === 'dentist' || staffRole === 'hygienist' || staffRole === 'owner') && (
+                    <div className="section">
+                      <div className="notes-header">
+                        <div className="section-label" style={{ marginBottom: 0 }}>Treatment notes</div>
+                        <button className="add-note-btn" onClick={() => setShowAddNote(v => !v)}>
+                          {showAddNote ? '✕ Cancel' : '+ Add note'}
+                        </button>
+                      </div>
+
+                      {showAddNote && (
+                        <div className="note-form">
+                          <div className="note-form-title">New visit note</div>
+                          <label className="note-label">Chief complaint / reason for visit</label>
+                          <textarea className="note-textarea" rows={2}
+                            placeholder="Patient presented with..."
+                            value={newNote.chiefComplaint}
+                            onChange={e => setNewNote(p => ({ ...p, chiefComplaint: e.target.value }))} />
+                          <label className="note-label">Clinical findings *</label>
+                          <textarea className="note-textarea" rows={3}
+                            placeholder="Examination findings, X-ray results, periodontal scores..."
+                            value={newNote.findings}
+                            onChange={e => setNewNote(p => ({ ...p, findings: e.target.value }))} />
+                          <label className="note-label">Treatment performed</label>
+                          <textarea className="note-textarea" rows={2}
+                            placeholder="Procedures completed today..."
+                            value={newNote.treatmentDone}
+                            onChange={e => setNewNote(p => ({ ...p, treatmentDone: e.target.value }))} />
+                          <label className="note-label">Next steps / follow-up</label>
+                          <textarea className="note-textarea" rows={2}
+                            placeholder="Return in 6 months for recall, patient to monitor..."
+                            value={newNote.nextSteps}
+                            onChange={e => setNewNote(p => ({ ...p, nextSteps: e.target.value }))} />
+                          <div className="note-actions">
+                            <button className={"note-save-btn" + (noteSaved ? ' saved' : '')}
+                              onClick={saveNote} disabled={savingNote || !newNote.findings.trim()}>
+                              {savingNote ? 'Saving...' : noteSaved ? '✓ Saved' : 'Save note'}
+                            </button>
+                            <button className="note-cancel-btn" onClick={() => setShowAddNote(false)}>Cancel</button>
+                            <label className="private-toggle">
+                              <input type="checkbox" checked={newNote.isPrivate}
+                                onChange={e => setNewNote(p => ({ ...p, isPrivate: e.target.checked }))} />
+                              Staff only (private)
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {loadingNotes ? (
+                        <div style={{ fontSize: '13px', color: '#CBD5E1', padding: '12px 0' }}>Loading notes...</div>
+                      ) : treatmentNotes.length === 0 ? (
+                        <div className="no-data">No treatment notes yet</div>
+                      ) : treatmentNotes.map(note => (
+                        <div key={note.id} className="note-card">
+                          <div className="note-meta">
+                            <span className="note-date">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            {note.written_by_name && <span className="note-author">by {note.written_by_name}</span>}
+                            {note.appointment_type && <span className="note-author">· {note.appointment_type}</span>}
+                            {note.is_private && <span className="private-badge">Private</span>}
+                          </div>
+                          {note.chief_complaint && (
+                            <div className="note-field">
+                              <div className="note-field-label">Chief complaint</div>
+                              <div className="note-field-val">{note.chief_complaint}</div>
+                            </div>
+                          )}
+                          {note.findings && (
+                            <div className="note-field">
+                              <div className="note-field-label">Findings</div>
+                              <div className="note-field-val">{note.findings}</div>
+                            </div>
+                          )}
+                          {note.treatment_done && (
+                            <div className="note-field">
+                              <div className="note-field-label">Treatment performed</div>
+                              <div className="note-field-val">{note.treatment_done}</div>
+                            </div>
+                          )}
+                          {note.next_steps && (
+                            <div className="note-field">
+                              <div className="note-field-label">Next steps</div>
+                              <div className="note-field-val">{note.next_steps}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
