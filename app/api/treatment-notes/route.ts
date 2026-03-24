@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const db = createServerClient()
   const { data, error } = await db
     .from('treatment_notes')
-    .select('*')
+    .select('id, visit_date, appointment_id, appointment_type, written_by_name, chief_complaint, findings, treatment_done, next_steps, is_private, created_at')
     .eq('clinic_id', clinicId)
     .eq('patient_id', patientId)
     .order('visit_date', { ascending: false })
