@@ -62,8 +62,8 @@ This is time-sensitive — another patient may take the slot.`
 
     case 'reminder_48h':
       context = `Remind ${name} they have a ${payload.appointmentType} appointment at ${clinic} on ${payload.appointmentTime}.
-Ask them to confirm attendance by replying YES or logging into their portal.
-If they need to cancel, they should call or use the portal.`
+Ask them to reply YES to confirm or NO to cancel. They can also manage their appointment in their patient portal.
+Keep it short and warm.`
       break
 
     case 'reminder_24h':
