@@ -1,178 +1,194 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Dynamic import for pdfkit — avoids edge runtime issues
+export const runtime = 'nodejs'
+export const maxDuration = 30
+
 async function generatePDF(data: PatientRecordData): Promise<Buffer> {
-  const PDFDocument = (await import('pdfkit')).default
-  
+  // Use pdfmake — self-contained, no external font files needed
+  const pdfMake = (await import('pdfmake/build/pdfmake')).default
+  const pdfFonts = (await import('pdfmake/build/vfs_fonts')).default
+  pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? (pdfFonts as any).vfs
+
+  const { patient, clinic, appointments, treatmentNotes, medical, dental, insurance, consents } = data
+
+  const gray  = '#64748B'
+  const dark  = '#0F172A'
+  const light = '#F8FAFC'
+  const red   = '#DC2626'
+  const green = '#10B981'
+
+  const section = (title: string) => ([
+    { text: title, style: 'sectionHeader', margin: [0, 16, 0, 4] },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }] },
+    { text: '', margin: [0, 4] }
+  ])
+
+  const row = (label: string, value: string | null | undefined) => {
+    if (!value) return null
+    return {
+      columns: [
+        { text: label + ':', width: 140, style: 'fieldLabel' },
+        { text: value, style: 'fieldValue' }
+      ], margin: [0, 2]
+    }
+  }
+
+  const content: unknown[] = [
+    // Header
+    { text: 'Patient Medical Record', style: 'title' },
+    { text: clinic.name, style: 'subtitle' },
+    { text: `Generated: ${new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`, style: 'subtitle', margin: [0, 0, 0, 16] },
+
+    // 1. Patient info
+    ...section('1. Patient Information'),
+    row('Full name', patient.full_name as string),
+    row('Date of birth', patient.date_of_birth ? new Date((patient.date_of_birth as string) + 'T12:00:00').toLocaleDateString('en-CA') : null),
+    row('Phone', patient.phone_primary as string),
+    row('Email', patient.email as string),
+    row('Address', [patient.address_line1, patient.city, patient.postal_code].filter(Boolean).join(', ') || null),
+    row('Language', patient.preferred_language === 'fr' ? 'French' : 'English'),
+    patient.emergency_contact_name ? row('Emergency contact', `${patient.emergency_contact_name} (${patient.emergency_contact_relationship || 'Contact'}) — ${patient.emergency_contact_phone || '—'}`) : null,
+  ].filter(Boolean)
+
+  // 2. Insurance
+  if (insurance) {
+    content.push(...section('2. Insurance'))
+    ;[
+      row('Provider', insurance.insurance_provider as string),
+      row('Policy number', insurance.insurance_number as string),
+      row('Policy holder', insurance.policy_holder_name as string),
+      insurance.secondary_provider ? row('Secondary provider', insurance.secondary_provider as string) : null,
+    ].filter(Boolean).forEach(r => content.push(r))
+  }
+
+  // 3. Medical history
+  if (medical) {
+    content.push(...section('3. Medical History'))
+    const allergies = medical.allergies as string[] | null
+    if (allergies && allergies.length > 0) {
+      content.push({
+        columns: [
+          { text: 'Allergies:', width: 140, style: 'fieldLabel', color: red },
+          { text: allergies.join(', '), style: 'fieldValue', color: red, bold: true }
+        ], margin: [0, 2]
+      })
+    }
+    const meds = medical.medications as string[] | string | null
+    const conds = medical.conditions as string[] | string | null
+    ;[
+      row('Medications', Array.isArray(meds) ? meds.join(', ') : meds as string | null),
+      row('Medical conditions', Array.isArray(conds) ? conds.join(', ') : conds as string | null),
+      row('Blood type', medical.blood_type as string | null),
+      medical.medical_notes ? row('Notes', medical.medical_notes as string) : null,
+    ].filter(Boolean).forEach(r => content.push(r))
+  }
+
+  // 4. Dental history
+  if (dental) {
+    content.push(...section('4. Dental History'))
+    const dentalKeys = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj']
+    const dentalConds = dentalKeys.filter(k => dental[k] === true).map(k => k.replace(/has_|had_/g, '').replace(/_/g, ' ')).join(', ')
+    ;[
+      row('Last dental visit', dental.last_dental_visit as string | null),
+      row('Dental anxiety', dental.dental_anxiety ? 'Yes' : null),
+      dentalConds ? row('Dental conditions', dentalConds) : null,
+    ].filter(Boolean).forEach(r => content.push(r))
+  }
+
+  // 5. Appointment history
+  if (appointments.length > 0) {
+    content.push(...section('5. Appointment History'))
+    appointments.forEach(apt => {
+      content.push({
+        columns: [
+          { text: new Date(apt.start_time as string).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' }), width: 100, style: 'fieldLabel' },
+          { text: (apt.appointment_type as string).charAt(0).toUpperCase() + (apt.appointment_type as string).slice(1), width: 120, style: 'fieldValue' },
+          { text: apt.status as string, width: 80, style: 'fieldLabel' },
+          { text: (apt.reason as string) || '', style: 'fieldLabel' },
+        ], margin: [0, 2]
+      })
+    })
+  }
+
+  // 6. Visit notes
+  if (treatmentNotes.length > 0) {
+    content.push(...section('6. Visit Notes'))
+    treatmentNotes.forEach(note => {
+      content.push({
+        table: {
+          widths: ['*'],
+          body: [[{
+            stack: [
+              { text: `${new Date((note.visit_date as string) + 'T12:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}${note.appointment_type ? ' — ' + note.appointment_type : ''}${note.written_by_name ? ' · ' + note.written_by_name : ''}`, style: 'noteDate' },
+              note.chief_complaint ? { text: [{ text: 'Complaint: ', bold: true }, note.chief_complaint as string], style: 'noteField' } : null,
+              note.findings        ? { text: [{ text: 'Findings: ', bold: true }, note.findings as string], style: 'noteField' } : null,
+              note.treatment_done  ? { text: [{ text: 'Treatment: ', bold: true }, note.treatment_done as string], style: 'noteField' } : null,
+              note.next_steps      ? { text: [{ text: 'Next steps: ', bold: true }, note.next_steps as string], style: 'noteField' } : null,
+            ].filter(Boolean)
+          }]]
+        },
+        layout: 'lightHorizontalLines',
+        margin: [0, 0, 0, 8]
+      })
+    })
+  }
+
+  // 7. Consents
+  if (consents) {
+    content.push(...section('7. Consents'))
+    const consentMap: [string, unknown][] = [
+      ['Treatment consent', consents.consent_treatment],
+      ['PIPEDA / Privacy', consents.consent_pipeda],
+      ['Email communications', consents.consent_communication_email],
+      ['SMS reminders', consents.consent_communication_sms],
+    ]
+    consentMap.forEach(([label, val]) => {
+      content.push({ text: `${val ? '✓' : '✗'} ${label}`, color: val ? green : red, fontSize: 10, margin: [0, 2] })
+    })
+    if (consents.signature_text) {
+      content.push(row('Signature', consents.signature_text as string))
+      if (consents.signed_at) content.push(row('Signed', new Date(consents.signed_at as string).toLocaleDateString('en-CA')))
+    }
+  }
+
+  // Footer
+  content.push(
+    { text: '', margin: [0, 20] },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#E2E8F0' }] },
+    { text: `This document was generated by DentPlus on behalf of ${clinic.name}. Confidential patient record.`, style: 'footer', margin: [0, 8] }
+  )
+
+  const docDefinition = {
+    content,
+    styles: {
+      title:         { fontSize: 20, bold: true, color: dark, alignment: 'center' as const },
+      subtitle:      { fontSize: 10, color: gray, alignment: 'center' as const },
+      sectionHeader: { fontSize: 13, bold: true, color: dark },
+      fieldLabel:    { fontSize: 9, color: gray },
+      fieldValue:    { fontSize: 10, color: dark },
+      noteDate:      { fontSize: 10, bold: true, color: dark, margin: [0, 0, 0, 4] },
+      noteField:     { fontSize: 9, color: dark, margin: [0, 1] },
+      footer:        { fontSize: 8, color: '#94A3B8', alignment: 'center' as const },
+    },
+    defaultStyle: { font: 'Roboto' },
+    pageMargins: [40, 40, 40, 40] as [number, number, number, number],
+  }
+
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' })
-    const chunks: Buffer[] = []
-    
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
-    doc.on('end', () => resolve(Buffer.concat(chunks)))
-    doc.on('error', reject)
-
-    const { patient, clinic, appointments, treatmentNotes, medical, dental, insurance, consents } = data
-
-    // ── Header ──────────────────────────────────────────────────────────────
-    doc.fontSize(20).font('Helvetica-Bold').text('Patient Medical Record', { align: 'center' })
-    doc.fontSize(11).font('Helvetica').fillColor('#64748B')
-      .text(clinic.name, { align: 'center' })
-      .text(`Generated: ${new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}`, { align: 'center' })
-    doc.moveDown(1.5)
-
-    // ── Divider helper ───────────────────────────────────────────────────────
-    const divider = () => {
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E2E8F0').lineWidth(1).stroke()
-      doc.moveDown(0.5)
-    }
-
-    // ── Section header helper ────────────────────────────────────────────────
-    const sectionHeader = (title: string) => {
-      doc.moveDown(0.5)
-      doc.fontSize(13).font('Helvetica-Bold').fillColor('#0F172A').text(title)
-      divider()
-    }
-
-    // ── Field helper ─────────────────────────────────────────────────────────
-    const field = (label: string, value: string | null | undefined, inline = true) => {
-      if (!value) return
-      if (inline) {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#64748B').text(label + ': ', { continued: true })
-        doc.font('Helvetica').fillColor('#0F172A').text(value)
-      } else {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#64748B').text(label + ':')
-        doc.font('Helvetica').fillColor('#0F172A').text(value, { indent: 10 })
-        doc.moveDown(0.3)
-      }
-    }
-
-    // ── 1. Patient information ────────────────────────────────────────────────
-    sectionHeader('1. Patient Information')
-    field('Full name', patient.full_name)
-    field('Date of birth', patient.date_of_birth ? new Date(patient.date_of_birth + 'T12:00:00').toLocaleDateString('en-CA') : null)
-    field('Phone', patient.phone_primary)
-    field('Email', patient.email)
-    field('Address', [patient.address_line1, patient.city, patient.postal_code].filter(Boolean).join(', '))
-    field('Language', patient.preferred_language === 'fr' ? 'French' : 'English')
-    if (patient.emergency_contact_name) {
-      doc.moveDown(0.3)
-      doc.fontSize(10).font('Helvetica-Bold').fillColor('#64748B').text('Emergency contact:')
-      doc.font('Helvetica').fillColor('#0F172A')
-        .text(`${patient.emergency_contact_name} (${patient.emergency_contact_relationship || 'Contact'}) — ${patient.emergency_contact_phone || '—'}`, { indent: 10 })
-    }
-
-    // ── 2. Insurance ─────────────────────────────────────────────────────────
-    if (insurance) {
-      doc.moveDown(0.5)
-      sectionHeader('2. Insurance')
-      field('Provider', insurance.insurance_provider)
-      field('Policy number', insurance.insurance_number)
-      field('Policy holder', insurance.policy_holder_name)
-      if (insurance.secondary_provider) {
-        doc.moveDown(0.3)
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#64748B').text('Secondary insurance:')
-        field('Provider', insurance.secondary_provider)
-        field('Policy number', insurance.secondary_policy_number)
-      }
-    }
-
-    // ── 3. Medical history ────────────────────────────────────────────────────
-    if (medical) {
-      doc.moveDown(0.5)
-      sectionHeader('3. Medical History')
-      const allergies = medical.allergies as string[] | null
-      const medications = medical.medications as string[] | string | null
-      const conditions = medical.conditions as string[] | string | null
-      if (allergies && allergies.length > 0) {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#DC2626').text('Allergies: ', { continued: true })
-        doc.font('Helvetica').fillColor('#0F172A').text(allergies.join(', '))
-      }
-      field('Medications', Array.isArray(medications) ? medications.join(', ') : medications as string | null)
-      field('Medical conditions', Array.isArray(conditions) ? conditions.join(', ') : conditions as string | null)
-      field('Blood type', medical.blood_type as string | null)
-      if (medical.medical_notes) field('Notes', medical.medical_notes as string, false)
-    }
-
-    // ── 4. Dental history ─────────────────────────────────────────────────────
-    if (dental) {
-      doc.moveDown(0.5)
-      sectionHeader('4. Dental History')
-      const dentalConditionKeys = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj']
-      const conditions = dentalConditionKeys.filter(k => dental[k] === true)
-      if (conditions.length > 0) field('Dental conditions', conditions.map((k: string) => k.replace(/has_|had_/g, '').replace(/_/g, ' ')).join(', '))
-      field('Last dental visit', dental.last_dental_visit as string | null)
-      if (dental.dental_anxiety !== undefined) field('Dental anxiety', (dental.dental_anxiety as boolean) ? 'Yes' : 'No')
-    }
-
-    // ── 5. Appointment history ────────────────────────────────────────────────
-    if (appointments.length > 0) {
-      doc.moveDown(0.5)
-      sectionHeader('5. Appointment History')
-      appointments.forEach(apt => {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#0F172A')
-          .text(`${new Date(apt.start_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })} — ${apt.appointment_type.charAt(0).toUpperCase() + apt.appointment_type.slice(1)}`)
-        doc.font('Helvetica').fillColor('#64748B').fontSize(9)
-          .text(`Status: ${apt.status}${apt.reason ? ' · ' + apt.reason : ''}`, { indent: 10 })
-        doc.moveDown(0.3)
-      })
-    }
-
-    // ── 6. Treatment notes (non-private) ─────────────────────────────────────
-    if (treatmentNotes.length > 0) {
-      doc.moveDown(0.5)
-      sectionHeader('6. Visit Notes')
-      treatmentNotes.forEach(note => {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#0F172A')
-          .text(`${new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}${note.appointment_type ? ' — ' + note.appointment_type : ''}${note.written_by_name ? ' (by ' + note.written_by_name + ')' : ''}`)
-        if (note.chief_complaint) field('Complaint', note.chief_complaint, false)
-        if (note.findings)        field('Findings', note.findings, false)
-        if (note.treatment_done)  field('Treatment', note.treatment_done, false)
-        if (note.next_steps)      field('Next steps', note.next_steps, false)
-        doc.moveDown(0.3)
-      })
-    }
-
-    // ── 7. Consents ───────────────────────────────────────────────────────────
-    if (consents) {
-      doc.moveDown(0.5)
-      sectionHeader('7. Consents')
-      const consentFields: [string, unknown][] = [
-        ['Treatment consent', consents.consent_treatment],
-        ['PIPEDA / Privacy', consents.consent_pipeda],
-        ['Email communications', consents.consent_communication_email],
-        ['SMS reminders', consents.consent_communication_sms],
-      ]
-      consentFields.forEach(([label, val]) => {
-        doc.fontSize(10).font('Helvetica').fillColor(val ? '#10B981' : '#F43F5E')
-          .text(`${val ? '✓' : '✗'} ${label}`)
-      })
-      if (consents.signature_text) {
-        doc.moveDown(0.3)
-        field('Electronic signature', consents.signature_text as string)
-        if (consents.signed_at) field('Signed', new Date(consents.signed_at as string).toLocaleDateString('en-CA'))
-      }
-    }
-
-    // ── Footer ────────────────────────────────────────────────────────────────
-    doc.moveDown(2)
-    divider()
-    doc.fontSize(8).fillColor('#94A3B8')
-      .text(`This document was generated by DentPlus on behalf of ${clinic.name}. Confidential patient record.`, { align: 'center' })
-
-    doc.end()
+    const pdfDoc = pdfMake.createPdf(docDefinition as any)
+    pdfDoc.getBuffer((buffer: Buffer) => resolve(buffer), undefined, undefined)
   })
 }
 
 interface PatientRecordData {
-  patient: Record<string, string | null>
+  patient: Record<string, unknown>
   clinic: { name: string }
-  appointments: Record<string, string>[]
-  treatmentNotes: Record<string, string>[]
+  appointments: Record<string, unknown>[]
+  treatmentNotes: Record<string, unknown>[]
   medical: Record<string, unknown> | null
   dental: Record<string, unknown> | null
-  insurance: Record<string, string> | null
+  insurance: Record<string, unknown> | null
   consents: Record<string, unknown> | null
 }
 
@@ -191,14 +207,12 @@ export async function GET(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Verify patient belongs to this clinic
     const { data: account } = await db.from('patient_accounts')
       .select('patient_id').eq('auth_id', patientAuthId).eq('clinic_id', clinicId).single()
     if (!account) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const patientId = account.patient_id
 
-    // Fetch all patient data in parallel
     const [
       { data: patient },
       { data: clinic },
@@ -230,15 +244,15 @@ export async function GET(request: Request) {
     const pdfBuffer = await generatePDF({
       patient,
       clinic,
-      appointments:    appointments || [],
-      treatmentNotes:  treatmentNotes || [],
-      medical:         medicalRows?.[0] || null,
-      dental:          dental || null,
-      insurance:       insurance || null,
-      consents:        consents || null,
+      appointments:   appointments || [],
+      treatmentNotes: treatmentNotes || [],
+      medical:        medicalRows?.[0] || null,
+      dental:         dental || null,
+      insurance:      insurance || null,
+      consents:       consents || null,
     })
 
-    const fileName = `DentPlus-Records-${patient.full_name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`
+    const fileName = `DentPlus-Records-${(patient.full_name as string).replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`
 
     return new Response(new Uint8Array(pdfBuffer), {
       headers: {
