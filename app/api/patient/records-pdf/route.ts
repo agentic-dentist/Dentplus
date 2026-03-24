@@ -6,9 +6,16 @@ export const maxDuration = 30
 
 async function generatePDF(data: PatientRecordData): Promise<Buffer> {
   // Use pdfmake — self-contained, no external font files needed
-  const pdfMake = (await import('pdfmake/build/pdfmake')) as any
-  const pdfFonts = (await import('pdfmake/build/vfs_fonts')) as any
-  pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs ?? pdfFonts.default?.vfs
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfMakePkg = require('pdfmake/build/pdfmake')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfFontsPkg = require('pdfmake/build/vfs_fonts')
+  const pdfMake = pdfMakePkg.default ?? pdfMakePkg
+  const fonts = pdfFontsPkg.default ?? pdfFontsPkg
+  // Create a new unfrozen instance with fonts attached
+  const pdfMakeWithFonts = Object.assign(Object.create(Object.getPrototypeOf(pdfMake)), pdfMake, {
+    vfs: fonts.pdfMake?.vfs ?? fonts.vfs ?? {}
+  })
 
   const { patient, clinic, appointments, treatmentNotes, medical, dental, insurance, consents } = data
 
@@ -177,7 +184,7 @@ async function generatePDF(data: PatientRecordData): Promise<Buffer> {
 
   return new Promise((resolve, reject) => {
     try {
-      const pdfDoc = pdfMake.createPdf(docDefinition)
+      const pdfDoc = pdfMakeWithFonts.createPdf(docDefinition)
       pdfDoc.getBuffer((buffer: Buffer) => resolve(buffer))
     } catch(err) { reject(err) }
   })
