@@ -15,6 +15,8 @@ const BASE_NAV: Record<Role, NavItem[]> = {
     { icon: '◷', label: 'Schedule',  path: 'dashboard/schedule' },
     { icon: '⬡', label: 'AI Agent',  path: 'dashboard/agent' },
     { icon: '◎', label: 'Reports',   path: 'dashboard/reports' },
+    { icon: '◑', label: 'Waitlist',  path: 'dashboard/waitlist' },
+    { icon: '→', label: 'Referrals', path: 'dashboard/referrals' },
   ],
   dentist: [
     { icon: '▦', label: 'Overview',     path: 'dashboard' },
