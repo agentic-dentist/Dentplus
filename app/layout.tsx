@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Agentic Dentist',
-  description: 'The dental practice that runs itself'
+  title: 'DentPlus',
+  description: 'The AI-powered dental practice platform',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

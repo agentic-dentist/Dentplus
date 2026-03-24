@@ -1,72 +1,52 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
-  if (!pathname.startsWith('/clinic/')) return NextResponse.next()
+  const url = request.nextUrl.clone()
+  const hostname = request.headers.get('host') || ''
 
-  const segments = pathname.split('/').filter(Boolean)
-  if (segments.length < 3) return NextResponse.next()
+  // Strip port for local dev
+  const host = hostname.replace(':3000', '').replace(':3001', '')
 
-  const section = segments[2]
+  // Production domains
+  const rootDomains = [
+    'dentplus.ca',
+    'www.dentplus.ca',
+    'dentplus.vercel.app',
+    'localhost',
+  ]
 
-  // Public pages — no auth needed
-  if (section === 'book') return NextResponse.next()
+  const isRootDomain = rootDomains.some(d => host === d || host.endsWith(d))
 
-  let response = NextResponse.next({ request })
+  // If it's a subdomain (e.g. demo.dentplus.ca)
+  if (!isRootDomain && host.includes('.')) {
+    const slug = host.split('.')[0]
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        }
-      }
+    // Skip non-clinic subdomains
+    if (['www', 'app', 'api', 'superadmin'].includes(slug)) {
+      return NextResponse.next()
     }
-  )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const slug = segments[1]
-  const loginUrl = new URL(`/clinic/${slug}/login`, request.url)
-  const splashUrl = new URL(`/clinic/${slug}`, request.url)
+    // Rewrite subdomain requests to /clinic/[slug] internally
+    // e.g. demo.dentplus.ca/portal → /clinic/demo/portal
+    const path = url.pathname
 
-  // Dashboard — requires staff auth
-  if (section === 'dashboard') {
-    if (!user) {
-      loginUrl.searchParams.set('type', 'staff')
-      loginUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(loginUrl)
+    // Already has /clinic/ prefix — pass through
+    if (path.startsWith('/clinic/')) {
+      return NextResponse.next()
     }
-    const { data: staff } = await supabase
-      .from('staff_accounts').select('id, role')
-      .eq('auth_id', user.id).eq('is_active', true).single()
-    if (!staff) return NextResponse.redirect(splashUrl)
+
+    // Rewrite to clinic path
+    url.pathname = `/clinic/${slug}${path === '/' ? '' : path}`
+    return NextResponse.rewrite(url)
   }
 
-  // Portal and intake — requires patient auth
-  if (section === 'portal' || section === 'intake') {
-    if (!user) {
-      loginUrl.searchParams.set('type', 'patient')
-      loginUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(loginUrl)
-    }
-    const { data: account } = await supabase
-      .from('patient_accounts').select('id')
-      .eq('auth_id', user.id).single()
-    if (!account) return NextResponse.redirect(splashUrl)
-  }
-
-  return response
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/clinic/:path*']
+  matcher: [
+    // Match all paths except static files and api routes that don't need rewriting
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
 }
