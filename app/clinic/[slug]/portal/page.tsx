@@ -377,172 +377,126 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     if (!patientAuthId || !clinicId) return
     setDownloadingPDF(true)
     try {
-      // Fetch record data from API
       const res = await fetch(`/api/patient/records-pdf?patientAuthId=${patientAuthId}&clinicId=${clinicId}`)
       if (!res.ok) throw new Error('Failed to fetch records')
       const data = await res.json()
 
-      // Generate PDF client-side using jsPDF
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      // Build print HTML
+      const html = buildRecordHTML(data)
 
-      const pageW = 210
-      const margin = 15
-      const contentW = pageW - margin * 2
-      let y = 20
-
-      const addPage = () => { doc.addPage(); y = 20 }
-      const checkPage = (needed = 10) => { if (y + needed > 280) addPage() }
-
-      const h1 = (text: string) => {
-        checkPage(12)
-        doc.setFontSize(16).setFont('helvetica', 'bold').setTextColor(15, 23, 42)
-        doc.text(text, pageW / 2, y, { align: 'center' })
-        y += 8
+      // Create hidden iframe, print it, remove it
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none'
+      document.body.appendChild(iframe)
+      
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!iframeDoc) throw new Error('Could not access iframe')
+      
+      iframeDoc.open()
+      iframeDoc.write(html)
+      iframeDoc.close()
+      
+      // Wait for content to load then print
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow?.print()
+          setTimeout(() => document.body.removeChild(iframe), 1000)
+        }, 300)
       }
-      const h2 = (text: string) => {
-        checkPage(10)
-        doc.setFontSize(11).setFont('helvetica', 'bold').setTextColor(14, 165, 233)
-        doc.text(text, margin, y)
-        doc.setDrawColor(226, 232, 240)
-        doc.line(margin, y + 1.5, pageW - margin, y + 1.5)
-        y += 7
-      }
-      const field = (label: string, value: string | null | undefined) => {
-        if (!value) return
-        checkPage(6)
-        doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(100, 116, 139)
-        doc.text(label + ':', margin, y)
-        doc.setFont('helvetica', 'normal').setTextColor(15, 23, 42)
-        const lines = doc.splitTextToSize(value, contentW - 42)
-        doc.text(lines, margin + 42, y)
-        y += Math.max(5, lines.length * 4.5)
-      }
-      const sub = (text: string, color: [number,number,number] = [100,116,139]) => {
-        checkPage(5)
-        doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(...color)
-        const lines = doc.splitTextToSize(text, contentW)
-        doc.text(lines, margin, y)
-        y += lines.length * 4.5
-      }
-
-      // Header
-      h1('Patient Medical Record')
-      doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100,116,139)
-      doc.text(data.clinicName, pageW/2, y, { align: 'center' }); y += 5
-      doc.text('Generated: ' + new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }), pageW/2, y, { align: 'center' }); y += 10
-
-      // Allergy banner
-      if (data.allergies?.length > 0) {
-        checkPage(10)
-        doc.setFillColor(254,242,242).roundedRect(margin, y, contentW, 8, 2, 2, 'F')
-        doc.setFontSize(9).setFont('helvetica','bold').setTextColor(220,38,38)
-        doc.text('⚠ Allergies: ' + data.allergies.join(', '), margin + 3, y + 5.5)
-        y += 12
-      }
-
-      // 1. Patient info
-      h2('1. Patient Information')
-      field('Full name', data.patient?.full_name)
-      field('Date of birth', data.patient?.date_of_birth ? new Date(data.patient.date_of_birth + 'T12:00:00').toLocaleDateString('en-CA') : null)
-      field('Phone', data.patient?.phone_primary)
-      field('Email', data.patient?.email)
-      field('Address', [data.patient?.address_line1, data.patient?.city, data.patient?.postal_code].filter(Boolean).join(', ') || null)
-      if (data.patient?.emergency_contact_name) {
-        field('Emergency contact', `${data.patient.emergency_contact_name} (${data.patient.emergency_contact_relationship || 'Contact'}) — ${data.patient.emergency_contact_phone || '—'}`)
-      }
-      y += 3
-
-      // 2. Insurance
-      if (data.insurance) {
-        h2('2. Insurance')
-        field('Provider', data.insurance.insurance_provider)
-        field('Policy number', data.insurance.insurance_number)
-        field('Policy holder', data.insurance.policy_holder_name)
-        if (data.insurance.secondary_provider) field('Secondary provider', data.insurance.secondary_provider)
-        y += 3
-      }
-
-      // 3. Medical history
-      if (data.medical) {
-        h2('3. Medical History')
-        if (data.allergies?.length > 0) field('Allergies', data.allergies.join(', '))
-        field('Medications', Array.isArray(data.medical.medications) ? data.medical.medications.join(', ') : data.medical.medications)
-        field('Conditions', Array.isArray(data.medical.conditions) ? data.medical.conditions.join(', ') : data.medical.conditions)
-        field('Blood type', data.medical.blood_type)
-        y += 3
-      }
-
-      // 4. Dental history
-      if (data.dental) {
-        h2('4. Dental History')
-        field('Last visit', data.dental.last_dental_visit)
-        if (data.dental.dental_anxiety) field('Dental anxiety', 'Yes')
-        if (data.dentalConditions) field('Conditions', data.dentalConditions)
-        y += 3
-      }
-
-      // 5. Appointments
-      if (data.appointments?.length > 0) {
-        h2('5. Appointment History')
-        data.appointments.forEach((apt: Record<string, string>) => {
-          checkPage(7)
-          const dt = new Date(apt.start_time).toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric', timeZone:'America/Toronto' })
-          doc.setFontSize(9).setFont('helvetica','bold').setTextColor(15,23,42)
-          doc.text(dt + ' — ' + apt.appointment_type.charAt(0).toUpperCase() + apt.appointment_type.slice(1), margin, y)
-          doc.setFont('helvetica','normal').setTextColor(100,116,139)
-          doc.text('Status: ' + apt.status + (apt.reason ? ' · ' + apt.reason : ''), margin + 4, y + 4)
-          y += 9
-        })
-        y += 3
-      }
-
-      // 6. Visit notes
-      if (data.treatmentNotes?.length > 0) {
-        h2('6. Visit Notes')
-        data.treatmentNotes.forEach((note: Record<string, string>) => {
-          checkPage(20)
-          doc.setFillColor(248,250,252).roundedRect(margin, y, contentW, 2, 1, 1, 'F')
-          doc.setFontSize(9).setFont('helvetica','bold').setTextColor(15,23,42)
-          const noteHeader = new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' }) + (note.appointment_type ? ' — ' + note.appointment_type : '') + (note.written_by_name ? ' · ' + note.written_by_name : '')
-          doc.text(noteHeader, margin, y + 5); y += 8
-          if (note.findings) { sub('Findings: ' + note.findings); y += 1 }
-          if (note.treatment_done) { sub('Treatment: ' + note.treatment_done); y += 1 }
-          if (note.next_steps) { sub('Next steps: ' + note.next_steps, [14,165,233]); y += 1 }
-          y += 4
-        })
-      }
-
-      // 7. Consents
-      if (data.consents) {
-        h2('7. Consents')
-        const consentMap = [['Treatment consent', data.consents.consent_treatment], ['PIPEDA / Privacy', data.consents.consent_pipeda], ['Email communications', data.consents.consent_communication_email], ['SMS reminders', data.consents.consent_communication_sms]]
-        consentMap.forEach(([label, val]) => {
-          checkPage(5)
-          doc.setFontSize(9).setFont('helvetica','normal').setTextColor(val ? 16 : 244, val ? 185 : 63, val ? 129 : 94)
-          doc.text((val ? '✓ ' : '✗ ') + label, margin, y); y += 5
-        })
-        if (data.consents.signature_text) {
-          y += 2
-          field('Signed by', data.consents.signature_text + (data.consents.signed_at ? ' on ' + new Date(data.consents.signed_at).toLocaleDateString('en-CA') : ''))
-        }
-      }
-
-      // Footer
-      const totalPages = (doc.internal as any).getNumberOfPages()
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i)
-        doc.setFontSize(7).setFont('helvetica','normal').setTextColor(148,163,184)
-        doc.text(`Generated by DentPlus for ${data.clinicName} — Confidential patient record — Page ${i} of ${totalPages}`, pageW/2, 290, { align: 'center' })
-      }
-
-      const fileName = `DentPlus-Records-${data.patient?.full_name?.replace(/\s+/g,'-') || 'Patient'}-${new Date().toISOString().slice(0,10)}.pdf`
-      doc.save(fileName)
     } catch (err) {
       console.error(err)
       alert('Could not generate PDF. Please try again.')
     }
     setDownloadingPDF(false)
+  }
+
+  const buildRecordHTML = (data: Record<string, any>) => {
+    const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+    const fmtDT = (d: string) => new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })
+    const row = (label: string, value: unknown) => value ? `<tr><td class="lbl">${label}</td><td>${value}</td></tr>` : ''
+    const sec = (n: string, title: string) => `<div class="sec"><h2><span class="num">${n}</span>${title}</h2>`
+
+    const allergies = data.allergies || []
+    const dentalKeys = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj']
+    const dentalConds = data.dental ? dentalKeys.filter((k: string) => data.dental[k]).map((k: string) => k.replace(/has_|had_/g,'').replace(/_/g,' ')).join(', ') : ''
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Patient Records - ${data.patient?.full_name || ''}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:10pt;color:#1a1a2e;padding:15mm}
+.header{text-align:center;border-bottom:2px solid #0EA5E9;padding-bottom:10px;margin-bottom:16px}
+h1{font-size:16pt;font-weight:700;color:#0F172A}
+.clinic{font-size:10pt;color:#64748B}
+.generated{font-size:8pt;color:#94A3B8;margin-top:3px}
+.allergy{background:#FEF2F2;border:1px solid #FECACA;border-radius:4px;padding:8px 12px;margin-bottom:14px;color:#DC2626;font-weight:600;font-size:9pt}
+.sec{margin-bottom:18px;page-break-inside:avoid}
+h2{font-size:11pt;font-weight:700;color:#0F172A;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.num{background:#0EA5E9;color:white;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:8pt;flex-shrink:0}
+table.info{width:100%;border-collapse:collapse}
+table.info td{padding:4px 6px;border-bottom:1px solid #F1F5F9;vertical-align:top;font-size:9pt}
+table.info td.lbl{width:150px;color:#64748B;font-weight:600}
+table.apts{width:100%;border-collapse:collapse;font-size:8.5pt}
+table.apts th{background:#F8FAFC;padding:5px 6px;text-align:left;font-weight:600;color:#64748B;border-bottom:1px solid #E2E8F0}
+table.apts td{padding:5px 6px;border-bottom:1px solid #F8FAFC}
+.note{background:#F8FAFC;border-left:3px solid #0EA5E9;padding:8px 10px;margin-bottom:8px;font-size:9pt}
+.note-hdr{font-weight:700;margin-bottom:4px}
+.note-fld{margin-top:3px}
+.note-key{font-weight:600;color:#64748B}
+.check{color:#10B981;font-weight:700}
+.cross{color:#F43F5E;font-weight:700}
+.footer{margin-top:20px;padding-top:8px;border-top:1px solid #E2E8F0;text-align:center;color:#94A3B8;font-size:7pt}
+@page{margin:10mm}
+</style></head><body>
+<div class="header">
+  <h1>Patient Medical Record</h1>
+  <div class="clinic">${data.clinicName}</div>
+  <div class="generated">Generated ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
+</div>
+${allergies.length > 0 ? `<div class="allergy">⚠ Allergies: ${allergies.join(', ')}</div>` : ''}
+${sec('1','Patient Information')}
+  <table class="info">
+    ${row('Full name', data.patient?.full_name)}
+    ${row('Date of birth', data.patient?.date_of_birth ? fmtDate(data.patient.date_of_birth) : null)}
+    ${row('Phone', data.patient?.phone_primary)}
+    ${row('Email', data.patient?.email)}
+    ${row('Address', [data.patient?.address_line1, data.patient?.city, data.patient?.postal_code].filter(Boolean).join(', ') || null)}
+    ${data.patient?.emergency_contact_name ? row('Emergency contact', `${data.patient.emergency_contact_name} (${data.patient.emergency_contact_relationship||'Contact'}) — ${data.patient.emergency_contact_phone||'—'}`) : ''}
+  </table></div>
+${data.insurance ? `${sec('2','Insurance')}<table class="info">
+    ${row('Provider', data.insurance.insurance_provider)}
+    ${row('Policy number', data.insurance.insurance_number)}
+    ${row('Policy holder', data.insurance.policy_holder_name)}
+  </table></div>` : ''}
+${data.medical ? `${sec('3','Medical History')}<table class="info">
+    ${allergies.length > 0 ? row('Allergies', allergies.join(', ')) : ''}
+    ${row('Medications', Array.isArray(data.medical.medications) ? data.medical.medications.join(', ') : data.medical.medications)}
+    ${row('Conditions', Array.isArray(data.medical.conditions) ? data.medical.conditions.join(', ') : data.medical.conditions)}
+    ${row('Blood type', data.medical.blood_type)}
+  </table></div>` : ''}
+${data.dental ? `${sec('4','Dental History')}<table class="info">
+    ${row('Last visit', data.dental.last_dental_visit)}
+    ${data.dental.dental_anxiety ? row('Dental anxiety', 'Yes') : ''}
+    ${dentalConds ? row('Conditions', dentalConds) : ''}
+  </table></div>` : ''}
+${data.appointments?.length > 0 ? `${sec('5','Appointment History')}
+  <table class="apts"><thead><tr><th>Date</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead><tbody>
+    ${data.appointments.map((a: Record<string,string>) => `<tr><td>${fmtDT(a.start_time)}</td><td style="text-transform:capitalize">${a.appointment_type}</td><td>${a.status}</td><td>${a.reason||'—'}</td></tr>`).join('')}
+  </tbody></table></div>` : ''}
+${data.treatmentNotes?.length > 0 ? `${sec('6','Visit Notes')}
+  ${data.treatmentNotes.map((n: Record<string,string>) => `<div class="note">
+    <div class="note-hdr">${fmtDate(n.visit_date)}${n.appointment_type?' — '+n.appointment_type:''}${n.written_by_name?' · '+n.written_by_name:''}</div>
+    ${n.findings?`<div class="note-fld"><span class="note-key">Findings:</span> ${n.findings}</div>`:''}
+    ${n.treatment_done?`<div class="note-fld"><span class="note-key">Treatment:</span> ${n.treatment_done}</div>`:''}
+    ${n.next_steps?`<div class="note-fld"><span class="note-key">Next steps:</span> ${n.next_steps}</div>`:''}
+  </div>`).join('')}</div>` : ''}
+${data.consents ? `${sec('7','Consents')}
+  ${[['Treatment consent',data.consents.consent_treatment],['PIPEDA / Privacy',data.consents.consent_pipeda],['Email communications',data.consents.consent_communication_email],['SMS reminders',data.consents.consent_communication_sms]]
+    .map(([l,v])=>`<div>${v?'<span class="check">✓</span>':'<span class="cross">✗</span>'} ${l}</div>`).join('')}
+  ${data.consents.signature_text?`<div style="margin-top:6px;font-size:8pt;color:#64748B">Signed: ${data.consents.signature_text}${data.consents.signed_at?' on '+fmtDate(data.consents.signed_at):''}</div>`:''}
+</div>` : ''}
+<div class="footer">Generated by DentPlus for ${data.clinicName} — Confidential patient record — PIPEDA compliant</div>
+</body></html>`
   }
 
   const NAV = [
