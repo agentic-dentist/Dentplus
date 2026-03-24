@@ -309,10 +309,10 @@ export default function AgentPage() {
                     </div>
                     <div className="feed-meta">
                       {entry.entity_type && `${entry.entity_type}`}
-                      {entry.metadata?.appointment_type && ` · ${entry.metadata.appointment_type}`}
-                      {entry.metadata?.slots_found !== undefined && ` · ${entry.metadata.slots_found} slots found`}
-                      {entry.metadata?.candidate_count !== undefined && ` · ${entry.metadata.candidate_count} candidates`}
-                      {entry.metadata?.channel && ` · ${entry.metadata.channel}`}
+                      {entry.metadata?.appointment_type && ` · ${String(entry.metadata.appointment_type)}`}
+                      {entry.metadata?.slots_found !== undefined && ` · ${String(entry.metadata.slots_found)} slots found`}
+                      {entry.metadata?.candidate_count !== undefined && ` · ${String(entry.metadata.candidate_count)} candidates`}
+                      {entry.metadata?.channel && ` · ${String(entry.metadata.channel)}`}
                     </div>
                   </div>
                   <div className="feed-time">{formatTime(entry.created_at)}</div>
