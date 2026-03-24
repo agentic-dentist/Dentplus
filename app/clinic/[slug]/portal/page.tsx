@@ -421,7 +421,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     const dentalConds = data.dental ? dentalKeys.filter((k: string) => data.dental[k]).map((k: string) => k.replace(/has_|had_/g,'').replace(/_/g,' ')).join(', ') : ''
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Patient Records - ${data.patient?.full_name || ''}</title>
+<title>DentPlus-Records-${(data.patient?.full_name||"").replace(/\s+/g,"-")}-${new Date().toISOString().slice(0,10)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:10pt;color:#1a1a2e;padding:15mm}
