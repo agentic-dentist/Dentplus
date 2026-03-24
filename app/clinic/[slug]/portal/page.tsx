@@ -91,6 +91,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
   const [referrals, setReferrals] = useState<Referral[]>([])
   const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
 
   // Booking panel state
   const [showBooking, setShowBooking] = useState(false)
@@ -370,6 +371,28 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     setWaitlistOffer(null)
     setWaitlistEntry(null)
     setOfferResponding(false)
+  }
+
+  const downloadRecords = async () => {
+    if (!patientAuthId || !clinicId) return
+    setDownloadingPDF(true)
+    try {
+      const res = await fetch(`/api/patient/records-pdf?patientAuthId=${patientAuthId}&clinicId=${clinicId}`)
+      if (!res.ok) throw new Error('Failed to generate PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `DentPlus-Records-${patientInfo?.full_name.replace(/\s+/g, '-') || 'Patient'}-${new Date().toISOString().slice(0,10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      alert('Could not generate PDF. Please try again.')
+    }
+    setDownloadingPDF(false)
   }
 
   const NAV = [
@@ -700,7 +723,15 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
                   </div>
                 ))}
               </div>
-              <div className="section-title" style={{ marginTop: '20px' }}>Intake form</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '20px', marginBottom: '4px' }}>
+                <div className="section-title" style={{ margin: 0 }}>Intake form</div>
+                <button
+                  onClick={downloadRecords}
+                  disabled={downloadingPDF}
+                  style={{ padding: '7px 16px', background: '#0F172A', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif', opacity: downloadingPDF ? .6 : 1 }}>
+                  {downloadingPDF ? 'Generating...' : '↓ Download my records'}
+                </button>
+              </div>
               <div className="status-row">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : '#CBD5E1' }} />
