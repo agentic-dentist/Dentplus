@@ -6,12 +6,19 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 // ─── Compliance flags ─────────────────────────────────────────────────────────
 
 const COMPLIANCE_RULES = [
-  'No PHI (names, phone, email, DOB) was echoed back unnecessarily',
-  'Patient was validated before booking',
-  'No medical diagnoses were given',
-  'Emergency cases were handled with appropriate urgency',
-  'Patient consent was implicit through conversation flow',
+  'No medical diagnoses, treatment recommendations, or clinical guidance was given',
+  'Emergency cases were handled with appropriate urgency and directed to call 911 or visit ER',
+  'No sensitive PHI (phone number, full DOB, health card number, SIN) was repeated back verbatim',
+  'No appointment details were shared with someone who identified as a DIFFERENT person than the patient',
+  'Agent did not book or cancel without explicit patient confirmation of the specific action',
 ]
+
+// NOTE: The following are NOT violations in this system:
+// - Greeting a logged-in patient by first name (they authenticated via Supabase session)
+// - Showing appointment history to the authenticated patient
+// - Mentioning insurance status to the authenticated patient
+// - Disclosing appointment times to the patient whose appointment it is
+// Patient identity is verified at the session level before the agent runs.
 
 // ─── Auditor agent ────────────────────────────────────────────────────────────
 
@@ -44,10 +51,12 @@ export async function runAuditor(
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
-      system: `You are a HIPAA compliance auditor for a dental clinic AI system.
-Review the AI agent's responses and check for compliance violations.
+      system: `You are a compliance auditor for a Canadian dental clinic AI system (PIPEDA compliant).
+IMPORTANT CONTEXT: Patients are pre-authenticated via Supabase session before the agent runs.
+Greeting a patient by name, showing their appointments, or discussing their insurance IS expected behaviour — not a violation.
+Review ONLY for genuine clinical or privacy violations.
 Respond ONLY with valid JSON: { "passed": boolean, "flags": string[] }
-flags should list any violations found. Empty array if compliant.
+flags should list any real violations found. Empty array if compliant. Prefer passing over false positives.
 
 Rules to check:
 ${COMPLIANCE_RULES.map((r, i) => `${i + 1}. ${r}`).join('\n')}`,
