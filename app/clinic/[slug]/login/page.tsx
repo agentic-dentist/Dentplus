@@ -40,9 +40,26 @@ export default function LoginPage({
     setError('')
 
     if (mode === 'login') {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) { setError('Invalid email or password.'); setLoading(false); return }
-      const redirect = searchParams.get('redirect') || `/clinic/${slug}/${type === 'staff' ? 'dashboard' : 'portal'}`
+
+      const user = authData.user
+      const role = user?.user_metadata?.role
+
+      // Owner → setup complete page
+      if (role === 'owner') {
+        router.push(`/setup/complete?slug=${slug}`)
+        return
+      }
+
+      // Staff → dashboard on current subdomain (middleware handles rewrite)
+      if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
+        router.push('/dashboard')
+        return
+      }
+
+      // Patient → portal
+      const redirect = searchParams.get('redirect') || `/clinic/${slug}/portal`
       router.push(redirect)
       return
     }
@@ -51,7 +68,6 @@ export default function LoginPage({
     const { data: authData, error: authError } = await supabase.auth.signUp({ email, password })
     if (authError || !authData.user) { setError(authError?.message || 'Registration failed.'); setLoading(false); return }
 
-    // Create patient account via API
     const res = await fetch(`/api/patient/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
