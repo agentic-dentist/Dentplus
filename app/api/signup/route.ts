@@ -101,11 +101,11 @@ export async function POST(req: NextRequest) {
     })
 
     // Fire verification email
-    await supabase.auth.admin.generateLink({
-      type: 'signup',
-      email: email.toLowerCase(),
-      options: { redirectTo: `${process.env.APP_URL}/setup` },
-    })
+await supabase.auth.admin.generateLink({
+  type: 'magiclink',
+  email: email.toLowerCase(),
+  options: { redirectTo: `${process.env.APP_URL}/setup` },
+})
 
     return NextResponse.json({ success: true, clinicId, slug: cleanSlug })
   } catch (err) {
