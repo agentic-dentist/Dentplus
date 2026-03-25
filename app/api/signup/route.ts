@@ -44,10 +44,14 @@ export async function POST(req: NextRequest) {
       user_metadata: { full_name: ownerName, role: 'owner' },
     })
     if (authError || !authData.user) {
-      if (authError?.message?.includes('already registered'))
-        return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 })
-      return NextResponse.json({ error: 'Could not create account.' }, { status: 500 })
-    }
+  if (
+    authError?.message?.includes('already registered') ||
+    authError?.message?.includes('already been registered') ||
+    authError?.status === 422
+  )
+    return NextResponse.json({ error: 'An account with this email already exists. Try signing in instead.' }, { status: 409 })
+  return NextResponse.json({ error: `Could not create account: ${authError?.message}` }, { status: 500 })
+}
 
     const authId = authData.user.id
 
