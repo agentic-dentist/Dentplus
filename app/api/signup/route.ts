@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     // Send verification email via Resend SMTP
     await supabase.auth.admin.inviteUserByEmail(email.toLowerCase(), {
-      redirectTo: `${process.env.APP_URL}/setup`,
+      redirectTo: `${process.env.APP_URL}/api/auth/callback?next=/setup`,
     })
 
     return NextResponse.json({ success: true, clinicId, slug: cleanSlug })
