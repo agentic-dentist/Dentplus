@@ -514,9 +514,13 @@ function SetupWizard() {
   }, [])
 
   const handleGoLive = () => {
-    supabase.from('clinics').select('slug').eq('id', clinicId!).single()
-      .then(({ data }) => router.replace(data?.slug ? `https://${data.slug}.dentplus.ca/dashboard` : '/'))
-  }
+  supabase.from('clinics').select('slug').eq('id', clinicId!).single()
+    .then(({ data }) => {
+      if (data?.slug) {
+        router.replace(`/setup/complete?slug=${data.slug}`)
+      }
+    })
+}
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
