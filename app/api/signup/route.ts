@@ -151,11 +151,15 @@ export async function POST(req: NextRequest) {
       max_staff: 3, max_patients: 100,
     })
 
-    // Generate confirmation link tied to the exact user we created (type: signup)
+    // Step 1: Confirm the user we just created so magiclink works correctly
+    await supabase.auth.admin.updateUser(authId, {
+      email_confirm: true,
+    })
+
+    // Step 2: Generate magiclink for the confirmed user — token sub will match authId
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'signup',
+      type: 'magiclink',
       email: email.toLowerCase(),
-      password,
       options: { redirectTo: `${process.env.APP_URL}/auth/confirm` },
     })
 
@@ -164,7 +168,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not generate confirmation email.' }, { status: 500 })
     }
 
-    // Send branded email via Resend
+    // Step 3: Send branded email via Resend
     await sendConfirmationEmail(email.toLowerCase(), ownerName.trim(), linkData.properties.action_link)
 
     return NextResponse.json({ success: true, clinicId, slug: cleanSlug })
