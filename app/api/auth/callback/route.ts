@@ -37,10 +37,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/signup`)
   }
 
-  // ── OAuth / magic link code flow (existing) ─────────────────────────────────
+  // ── OAuth / code flow ────────────────────────────────────────────────────────
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
+
+      // Check if this is a clinic owner → send to setup wizard
+      const { data: owner } = await supabase
+        .from('clinic_owners')
+        .select('clinic_id')
+        .eq('auth_id', data.user.id)
+        .maybeSingle()
+
+      if (owner) {
+        return NextResponse.redirect(`${origin}/setup`)
+      }
+
+      // Existing patient flow
       if (type === 'patient') {
         const user = data.user
         const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Patient'
@@ -50,6 +63,7 @@ export async function GET(request: NextRequest) {
           body: JSON.stringify({ slug, fullName, email: user.email, authId: user.id })
         })
       }
+
       return NextResponse.redirect(`${origin}/clinic/${slug}/${type === 'staff' ? 'dashboard' : 'portal'}`)
     }
   }
