@@ -42,14 +42,8 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
 
-      // Check if this is a clinic owner → send to setup wizard
-      const { data: owner } = await supabase
-        .from('clinic_owners')
-        .select('clinic_id')
-        .eq('auth_id', data.user.id)
-        .maybeSingle()
-
-      if (owner) {
+      // Check if clinic owner via user_metadata → send to setup wizard
+      if (data.user.user_metadata?.role === 'owner') {
         return NextResponse.redirect(`${origin}/setup`)
       }
 
