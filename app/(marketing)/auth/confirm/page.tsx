@@ -2,19 +2,15 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/lib/supabase/client'
 
 export default function AuthConfirmPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabase = createClient()
 
     const handleRedirect = async () => {
-      // Parse hash fragment manually
       const hash = window.location.hash.substring(1)
       const params = new URLSearchParams(hash)
       const access_token = params.get('access_token')
@@ -45,7 +41,6 @@ export default function AuthConfirmPage() {
         return
       }
 
-      // Nothing worked — back to signup
       router.replace('/signup')
     }
 
