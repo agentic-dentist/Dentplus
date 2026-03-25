@@ -151,10 +151,11 @@ export async function POST(req: NextRequest) {
       max_staff: 3, max_patients: 100,
     })
 
-    // Generate secure confirmation link (PKCE — no token in URL)
+    // Generate confirmation link tied to the exact user we created (type: signup)
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
+      type: 'signup',
       email: email.toLowerCase(),
+      password,
       options: { redirectTo: `${process.env.APP_URL}/auth/confirm` },
     })
 
