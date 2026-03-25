@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const { data: existingOwner } = await supabase
       .from('clinic_owners').select('id').eq('email', email.toLowerCase()).maybeSingle()
     if (existingOwner)
-      return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 })
+      return NextResponse.json({ error: 'An account with this email already exists. Try signing in instead.' }, { status: 409 })
 
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -44,14 +44,14 @@ export async function POST(req: NextRequest) {
       user_metadata: { full_name: ownerName, role: 'owner' },
     })
     if (authError || !authData.user) {
-  if (
-    authError?.message?.includes('already registered') ||
-    authError?.message?.includes('already been registered') ||
-    authError?.status === 422
-  )
-    return NextResponse.json({ error: 'An account with this email already exists. Try signing in instead.' }, { status: 409 })
-  return NextResponse.json({ error: `Could not create account: ${authError?.message}` }, { status: 500 })
-}
+      if (
+        authError?.message?.includes('already registered') ||
+        authError?.message?.includes('already been registered') ||
+        authError?.status === 422
+      )
+        return NextResponse.json({ error: 'An account with this email already exists. Try signing in instead.' }, { status: 409 })
+      return NextResponse.json({ error: `Could not create account: ${authError?.message}` }, { status: 500 })
+    }
 
     const authId = authData.user.id
 
@@ -104,12 +104,10 @@ export async function POST(req: NextRequest) {
       max_staff: 3, max_patients: 100,
     })
 
-    // Fire verification email
-await supabase.auth.admin.generateLink({
-  type: 'magiclink',
-  email: email.toLowerCase(),
-  options: { redirectTo: `${process.env.APP_URL}/setup` },
-})
+    // Send verification email via Resend SMTP
+    await supabase.auth.admin.inviteUserByEmail(email.toLowerCase(), {
+      redirectTo: `${process.env.APP_URL}/setup`,
+    })
 
     return NextResponse.json({ success: true, clinicId, slug: cleanSlug })
   } catch (err) {
