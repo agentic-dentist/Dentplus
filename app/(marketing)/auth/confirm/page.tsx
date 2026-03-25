@@ -14,31 +14,39 @@ export default function AuthConfirmPage() {
     )
 
     const handleRedirect = async () => {
-      // Give Supabase JS time to parse the hash and establish the session
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Parse hash fragment manually
+      const hash = window.location.hash.substring(1)
+      const params = new URLSearchParams(hash)
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
 
-      const { data: { session } } = await supabase.auth.getSession()
+      if (access_token && refresh_token) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        })
 
-      if (session?.user) {
-        if (session.user.user_metadata?.role === 'owner') {
-          router.replace('/setup')
-        } else {
-          router.replace('/')
-        }
-        return
-      }
-
-      // Fallback: listen for auth state change
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          subscription.unsubscribe()
-          if (session.user.user_metadata?.role === 'owner') {
+        if (!error && data.session?.user) {
+          const role = data.session.user.user_metadata?.role
+          if (role === 'owner') {
             router.replace('/setup')
           } else {
             router.replace('/')
           }
+          return
         }
-      })
+      }
+
+      // No token in hash — check if already signed in
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const role = session.user.user_metadata?.role
+        router.replace(role === 'owner' ? '/setup' : '/')
+        return
+      }
+
+      // Nothing worked — back to signup
+      router.replace('/signup')
     }
 
     handleRedirect()
