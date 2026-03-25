@@ -46,9 +46,9 @@ export default function LoginPage({
       const user = authData.user
       const role = user?.user_metadata?.role
 
-      // Owner → setup complete page
+      // Owner → dashboard on current subdomain
       if (role === 'owner') {
-        router.push(`/setup/complete?slug=${slug}`)
+        router.push('/dashboard')
         return
       }
 
