@@ -1,7 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
+
+// Service role client for DB lookups (bypasses RLS)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
@@ -27,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
   )
 
-  // ── Invite / magiclink flow (owner email confirmation) ──────────────────────
+  // ── Invite / magiclink flow ──────────────────────────────────────────────────
   if (token_hash && (type === 'invite' || type === 'magiclink' || type === 'email')) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
@@ -41,24 +48,71 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.user) {
+      const user = data.user
+      const role = user.user_metadata?.role
 
-      // Check if clinic owner via user_metadata → send to setup wizard
-      if (data.user.user_metadata?.role === 'owner') {
-        return NextResponse.redirect(`${origin}/setup`)
+      // ── Clinic owner ──────────────────────────────────────────────────────
+      if (role === 'owner') {
+        const { data: owner } = await supabaseAdmin
+          .from('clinic_owners')
+          .select('clinic_id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+
+        if (owner) {
+          const { data: clinic } = await supabaseAdmin
+            .from('clinics')
+            .select('slug, setup_complete')
+            .eq('id', owner.clinic_id)
+            .single()
+
+          if (clinic) {
+            if (!clinic.setup_complete) {
+              // Setup not done — back to wizard on root domain
+              return NextResponse.redirect(`https://dentplus.ca/setup`)
+            }
+            // Setup done — go to their subdomain dashboard
+            return NextResponse.redirect(`https://${clinic.slug}.dentplus.ca/dashboard`)
+          }
+        }
+
+        // Fallback
+        return NextResponse.redirect(`https://dentplus.ca/setup`)
       }
 
-      // Existing patient flow
+      // ── Staff (receptionist, dentist, hygienist, etc.) ────────────────────
+      if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
+        const { data: staff } = await supabaseAdmin
+          .from('staff_accounts')
+          .select('clinic_id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+
+        if (staff) {
+          const { data: clinic } = await supabaseAdmin
+            .from('clinics')
+            .select('slug')
+            .eq('id', staff.clinic_id)
+            .single()
+
+          if (clinic) {
+            return NextResponse.redirect(`https://${clinic.slug}.dentplus.ca/dashboard`)
+          }
+        }
+      }
+
+      // ── Patient flow (existing) ───────────────────────────────────────────
       if (type === 'patient') {
-        const user = data.user
         const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Patient'
         await fetch(`${origin}/api/patient/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, fullName, email: user.email, authId: user.id })
         })
+        return NextResponse.redirect(`${origin}/clinic/${slug}/portal`)
       }
 
-      return NextResponse.redirect(`${origin}/clinic/${slug}/${type === 'staff' ? 'dashboard' : 'portal'}`)
+      return NextResponse.redirect(`${origin}/clinic/${slug}/portal`)
     }
   }
 
