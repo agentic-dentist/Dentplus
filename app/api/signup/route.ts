@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Step 1: Confirm the user we just created so magiclink works correctly
-    await supabase.auth.admin.updateUser(authId, {
+    await supabase.auth.admin.updateUserById(authId, {
       email_confirm: true,
     })
 
