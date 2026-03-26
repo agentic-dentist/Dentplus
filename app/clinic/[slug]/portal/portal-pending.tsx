@@ -29,7 +29,8 @@ export default function PortalPendingGate({
 
       if (!settings) { setStatus('unauthenticated'); return }
 
-      const clinicName = (settings.clinics as { name: string } | null)?.name || ''
+      const clinics = settings.clinics
+      const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || ''
       setClinicName(clinicName)
 
       const { data: account } = await supabase
