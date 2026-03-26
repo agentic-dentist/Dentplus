@@ -5,14 +5,13 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const token = searchParams.get('token')
-    if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+    if (!token) return NextResponse.json({ valid: false, error: 'Missing token' }, { status: 400 })
 
     const db = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Fetch invite — no nested clinic_settings join (no FK relationship)
     const { data: invite, error: inviteError } = await db
       .from('staff_invites')
       .select('id, email, full_name, role, status, expires_at, clinic_id')
@@ -20,52 +19,28 @@ export async function GET(request: Request) {
       .single()
 
     if (inviteError) {
-      console.error('[INVITE ACCEPT] invite lookup error:', JSON.stringify(inviteError))
-      return NextResponse.json({ error: `DB error: ${inviteError.message}` }, { status: 500 })
+      console.error('[INVITE CHECK] lookup error:', JSON.stringify(inviteError))
+      return NextResponse.json({ valid: false, error: 'DB error' }, { status: 500 })
     }
-    if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
-    if (!['pending', 'sent'].includes(invite.status)) return NextResponse.json({ error: 'Invite already used' }, { status: 400 })
-    if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 400 })
+    if (!invite) return NextResponse.json({ valid: false, error: 'Invite not found.' }, { status: 404 })
+    if (!['pending', 'sent'].includes(invite.status)) return NextResponse.json({ valid: false, error: 'This invite has already been used.' }, { status: 400 })
+    if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ valid: false, error: 'This invite has expired.' }, { status: 400 })
 
-    // Fetch slug separately
-    const { data: settings } = await db
-      .from('clinic_settings')
-      .select('slug')
-      .eq('clinic_id', invite.clinic_id)
-      .single()
+    const { data: clinic } = await db.from('clinics').select('name').eq('id', invite.clinic_id).single()
+    const { data: settings } = await db.from('clinic_settings').select('slug').eq('clinic_id', invite.clinic_id).single()
 
-    // Create auth user
-    const { data: authData, error: authError } = await db.auth.admin.createUser({
-      email: invite.email,
-      password,
-      email_confirm: true
+    return NextResponse.json({
+      valid: true,
+      invite: {
+        email: invite.email,
+        full_name: invite.full_name,
+        role: invite.role,
+        clinic_name: clinic?.name || 'Your clinic',
+        slug: settings?.slug || 'demo'
+      }
     })
-
-    if (authError || !authData.user) {
-      console.error('[INVITE ACCEPT] auth error:', authError)
-      return NextResponse.json({ error: authError?.message || 'Failed to create account' }, { status: 500 })
-    }
-
-    // Create staff account
-    const { error: staffError } = await db.from('staff_accounts').insert({
-      auth_id: authData.user.id,
-      clinic_id: invite.clinic_id,
-      email: invite.email,
-      full_name: invite.full_name || invite.email.split('@')[0],
-      role: invite.role,
-      is_active: true
-    })
-
-    if (staffError) {
-      console.error('[INVITE ACCEPT] staff insert error:', JSON.stringify(staffError))
-    }
-
-    // Mark invite as accepted
-    await db.from('staff_invites').update({ status: 'accepted' }).eq('id', invite.id)
-
-    return NextResponse.json({ success: true, slug: settings?.slug || 'demo' })
   } catch (error) {
-    console.error('[INVITE ACCEPT] unexpected error:', error)
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    console.error('[INVITE CHECK] unexpected error:', error)
+    return NextResponse.json({ valid: false, error: 'Something went wrong' }, { status: 500 })
   }
 }
