@@ -401,10 +401,13 @@ export default function PatientsPage() {
                           {((detail.medical as any).allergies as string[]).map((a: string) => <span key={a} className="tag tag-allergy">{a}</span>)}
                         </div>
                       )}
-                      {(detail.medical as any).takes_medications && ((detail.medical as any).medications as string[]).length > 0 && (
+                      {(detail.medical as any).takes_medications && ((detail.medical as any).medications as any[]).length > 0 && (
                         <div>
                           <div className="info-key" style={{ marginBottom: 4 }}>Medications</div>
-                          {((detail.medical as any).medications as string[]).map((m: string) => <span key={m} className="tag tag-med">{m}</span>)}
+                          {((detail.medical as any).medications as any[]).map((m: any, i: number) => {
+                            const label = typeof m === 'object' ? [m.name, m.dosage, m.frequency].filter(Boolean).join(' · ') : m
+                            return <span key={i} className="tag tag-med">{label}</span>
+                          })}
                         </div>
                       )}
                     </div>
