@@ -28,7 +28,7 @@ export default function ClinicHomePage() {
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) { router.replace(`/clinic/${slug}/portal`); return }
+      if (user) { router.replace(`/portal`); return }
 
       const res = await fetch(`/api/public-clinic?slug=${slug}`)
       if (!res.ok) { setLoading(false); return }
@@ -50,7 +50,7 @@ export default function ClinicHomePage() {
     if (role === 'owner' || ['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
       router.push('/dashboard')
     } else {
-      router.push(`/clinic/${slug}/portal`)
+      router.push(`/portal`)
     }
   }
 
@@ -162,7 +162,7 @@ export default function ClinicHomePage() {
               <strong style={{ color: '#475569' }}>{slug}.dentplus.ca/register</strong>
             </div>
 
-            <a href={`/clinic/${slug}/login?type=staff`} className="staff-link">
+            <a href="/login?type=staff"} className="staff-link">
               Staff & clinic owner login →
             </a>
           </div>
