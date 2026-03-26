@@ -35,7 +35,6 @@ export default function ClinicHomePage() {
           .eq('auth_id', user.id)
           .maybeSingle()
         if (account) { router.replace('/portal'); return }
-        // Auth user exists but no patient account (staff/owner) — sign out
         await supabase.auth.signOut()
       }
 
