@@ -23,7 +23,12 @@ export default function LoginPage({
 
   useEffect(() => {
     params.then(p => {
-      setSlug(p.slug)
+      // Read real slug from subdomain hostname, not rewritten path
+      const hostname = window.location.hostname
+      const realSlug = hostname.includes('.dentplus.ca')
+        ? hostname.replace('.dentplus.ca', '')
+        : p.slug
+      setSlug(realSlug)
       const t = searchParams.get('type') as 'patient' | 'staff'
       if (t) setType(t)
       if (t === 'staff') setMode('login')
@@ -52,7 +57,7 @@ export default function LoginPage({
         return
       }
 
-      // Staff → dashboard on current subdomain (middleware handles rewrite)
+      // Staff → dashboard on current subdomain
       if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
         router.push('/dashboard')
         return
@@ -64,7 +69,7 @@ export default function LoginPage({
       return
     }
 
-    // Register — patient only (staff are created by clinic owner)
+    // Register — patient only
     const { data: authData, error: authError } = await supabase.auth.signUp({ email, password })
     if (authError || !authData.user) { setError(authError?.message || 'Registration failed.'); setLoading(false); return }
 

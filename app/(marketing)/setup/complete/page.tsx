@@ -2,11 +2,11 @@
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 
 function CompleteContent() {
   const params = useSearchParams()
   const slug = params.get('slug') ?? ''
+  const loginUrl = `https://${slug}.dentplus.ca/clinic/${slug}/login?type=staff`
   const dashboardUrl = `https://${slug}.dentplus.ca/dashboard`
 
   return (
@@ -20,7 +20,7 @@ function CompleteContent() {
         width: 56, height: 56, borderRadius: 16,
         background: 'linear-gradient(135deg, #1D9E75, #0EA5E9)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: '1.5rem', fontSize: 28,
+        marginBottom: '1.5rem', fontSize: 28, color: '#fff', fontWeight: 700,
       }}>
         ✓
       </div>
@@ -38,16 +38,22 @@ function CompleteContent() {
         borderRadius: 16, padding: '2rem',
         display: 'flex', flexDirection: 'column', gap: '1rem',
       }}>
-        <a href={dashboardUrl} style={{
+        {/* Primary CTA — sign in to dashboard */}
+        <a href={loginUrl} style={{
           display: 'block', textAlign: 'center',
           background: 'linear-gradient(135deg, #1D9E75, #0EA5E9)',
           color: '#fff', textDecoration: 'none',
           padding: '0.875rem', borderRadius: 10,
           fontSize: 15, fontWeight: 700,
         }}>
-          Go to my dashboard
+          Sign in to my dashboard
         </a>
 
+        <p style={{ color: '#444', fontSize: 12, textAlign: 'center', margin: 0 }}>
+          Use the email and password you registered with.
+        </p>
+
+        {/* Info cards */}
         <div style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 8, padding: '0.875rem' }}>
           <p style={{ color: '#666', fontSize: 12, margin: '0 0 0.4rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Bookmark your dashboard
