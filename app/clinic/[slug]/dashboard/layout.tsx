@@ -73,36 +73,60 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [time, setTime] = useState('')
 
   useEffect(() => {
-    const parts = pathname.split('/')
-    const slugFromPath = parts[2] || 'demo'
-    setSlug(slugFromPath)
+    // Read real slug from hostname, not rewritten path
+    const hostname = window.location.hostname
+    const realSlug = hostname.includes('.dentplus.ca')
+      ? hostname.replace('.dentplus.ca', '')
+      : (pathname.split('/')[2] || 'demo')
+    setSlug(realSlug)
 
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push(`/clinic/${slugFromPath}/login?type=staff`); return }
+      if (!user) { router.push(`/clinic/${realSlug}/login?type=staff`); return }
 
+      // Try staff_accounts first
       const { data: staff } = await supabase
         .from('staff_accounts')
         .select('role, full_name, clinic_id, clinics(name)')
         .eq('auth_id', user.id)
-        .single()
+        .maybeSingle()
 
-      if (!staff) { router.push(`/clinic/${slugFromPath}`); return }
+      if (staff) {
+        setRole(staff.role as Role)
+        setStaffName(staff.full_name)
+        const clinic = Array.isArray(staff.clinics) ? staff.clinics[0] : staff.clinics
+        setClinicName((clinic as { name: string })?.name || '')
 
-      setRole(staff.role as Role)
-      setStaffName(staff.full_name)
-      const clinic = Array.isArray(staff.clinics) ? staff.clinics[0] : staff.clinics
-      setClinicName((clinic as { name: string })?.name || '')
+        // Check if also a clinic owner
+        const { data: owner } = await supabase
+          .from('clinic_owners')
+          .select('id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+        setIsOwner(!!owner)
+        return
+      }
 
-      // Check if also a clinic owner
+      // No staff row — check if clinic owner
       const { data: owner } = await supabase
         .from('clinic_owners')
-        .select('id')
+        .select('clinic_id, clinics(name)')
         .eq('auth_id', user.id)
-        .single()
+        .maybeSingle()
 
-      setIsOwner(!!owner)
+      if (owner) {
+        const clinic = Array.isArray(owner.clinics) ? owner.clinics[0] : owner.clinics
+        setRole('owner')
+        setIsOwner(true)
+        setClinicName((clinic as { name: string })?.name || '')
+        setStaffName(user.user_metadata?.full_name || 'Clinic Owner')
+        return
+      }
+
+      // Neither staff nor owner — redirect to clinic home
+      router.push(`/clinic/${realSlug}`)
     }
+
     init()
   }, [pathname])
 
@@ -126,7 +150,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push(`/clinic/${slug}`)
   }
 
-  // Build nav: base role nav + owner extras (if owner) + settings
   const baseNav = BASE_NAV[role] || BASE_NAV.receptionist
   const extraNav = isOwner ? OWNER_EXTRA_NAV : STAFF_SETTINGS
 
@@ -198,7 +221,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )
             })}
 
-            {/* Owner-only or settings section */}
             <div className="nav-divider" />
             {isOwner && <div className="nav-label">Clinic management</div>}
             {extraNav.map(item => {
