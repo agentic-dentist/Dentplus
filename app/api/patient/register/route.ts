@@ -21,7 +21,7 @@ async function sendWelcomeEmail(email: string, fullName: string, clinicName: str
               <h1 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">You're approved! 🎉</h1>
               <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 8px;">Hi ${fullName},</p>
               <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">
-                Your patient account at <strong>${clinicName}</strong> has been approved. 
+                Your patient account at <strong>${clinicName}</strong> has been approved.
                 You can now sign in to access your portal, view appointments, and complete your intake form.
               </p>
               <p style="color:#94a3b8;font-size:12px;margin:24px 0 0;">— The DentPlus team</p>
@@ -42,7 +42,6 @@ export async function POST(request: Request) {
 
     const db = createServerClient()
 
-    // Get clinic by slug
     const { data: settings } = await db
       .from('clinic_settings')
       .select('clinic_id, clinics(name)')
@@ -53,6 +52,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
     }
 
+    const clinicId = settings.clinic_id
     const clinics = settings.clinics
     const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || 'your clinic'
 
@@ -80,7 +80,6 @@ export async function POST(request: Request) {
     if (existingPatient) {
       patientId = existingPatient.id
     } else {
-      // Create minimal patient record — staff will fill in details
       const { data: newPatient } = await db
         .from('patients')
         .insert({
@@ -96,7 +95,6 @@ export async function POST(request: Request) {
       if (newPatient) patientId = newPatient.id
     }
 
-    // Create patient account — pending approval
     const { error: accountError } = await db.from('patient_accounts').insert({
       auth_id: authId,
       clinic_id: clinicId,
@@ -118,7 +116,6 @@ export async function POST(request: Request) {
   }
 }
 
-// Approve patient account
 export async function PATCH(request: Request) {
   try {
     const { patientAccountId, clinicId } = await request.json()
@@ -128,7 +125,6 @@ export async function PATCH(request: Request) {
 
     const db = createServerClient()
 
-    // Get account details for email
     const { data: account } = await db
       .from('patient_accounts')
       .select('email, full_name, clinic_id, clinics(name)')
@@ -140,12 +136,10 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 })
     }
 
-    // Approve
     await db.from('patient_accounts')
       .update({ is_approved: true })
       .eq('id', patientAccountId)
 
-    // Send welcome email
     const clinics = account.clinics
     const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || 'your clinic'
     await sendWelcomeEmail(account.email, account.full_name, clinicName)
