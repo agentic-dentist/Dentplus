@@ -66,6 +66,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null)
   const [patientAuthId, setPatientAuthId] = useState<string | null>(null)
   const [patientId, setPatientId] = useState<string>('')
+  const [isApproved, setIsApproved] = useState<boolean | null>(null)
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
   const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes'>('appointments')
@@ -114,10 +115,12 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
 
       const { data: account } = await supabase
         .from('patient_accounts')
-        .select('patient_id, clinic_id')
-        .eq('auth_id', user.id).single()
+        .select('patient_id, clinic_id, is_approved')
+        .eq('auth_id', user.id).maybeSingle()
 
       if (!account) { router.push(`/clinic/${slug}`); return }
+      setIsApproved(account.is_approved ?? true)
+      if (!account.is_approved) { setLoading(false); return }
       setClinicId(account.clinic_id)
       setPatientId(account.patient_id)
 
@@ -508,6 +511,17 @@ ${data.consents ? `${sec('7','Consents')}
   ]
 
   const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
+
+  if (isApproved === false) return (
+    <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', padding: 40, maxWidth: 400, width: '100%', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: 24 }}>⏳</div>
+        <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 0.75rem' }}>Account pending approval</h2>
+        <p style={{ color: '#64748B', fontSize: 14, lineHeight: 1.6, margin: '0 0 1rem' }}>Your account is waiting for clinic staff approval. You will receive an email once approved.</p>
+        <button onClick={() => supabase.auth.signOut().then(() => router.push(`/clinic/${slug}`))} style={{ marginTop: 8, background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 20px', fontSize: 13, color: '#64748B', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sign out</button>
+      </div>
+    </div>
+  )
 
   return (
     <>

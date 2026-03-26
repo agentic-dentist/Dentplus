@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useClinicUser } from '../clinic-context'
+import { PendingPatientsTab } from './pending-patients-tab'
 
 interface Patient {
   id: string
@@ -50,7 +51,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 export default function PatientsPage() {
   // Get clinic context instead of querying staff_accounts
   const { clinicId, staffId, staffName, staffRole } = useClinicUser()
-
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all')
   const [patients, setPatients] = useState<Patient[]>([])
   const [filtered, setFiltered] = useState<Patient[]>([])
   const [search, setSearch] = useState('')
@@ -273,8 +274,17 @@ export default function PatientsPage() {
         .note-field-val { font-size: 13px; color: #334155; line-height: 1.5; }
       `}</style>
 
-      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 22, fontWeight: 700, color: '#0F172A', marginBottom: 20 }}>Patients</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h1 style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 700, color: '#0F172A', margin: 0 }}>Patients</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setActiveTab('all')} style={{ padding: '6px 16px', borderRadius: 20, border: '1px solid #E2E8F0', background: activeTab === 'all' ? '#0F172A' : 'white', color: activeTab === 'all' ? 'white' : '#64748B', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>All patients</button>
+          <button onClick={() => setActiveTab('pending')} style={{ padding: '6px 16px', borderRadius: 20, border: '1px solid #FEF3C7', background: activeTab === 'pending' ? '#D97706' : 'white', color: activeTab === 'pending' ? 'white' : '#D97706', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Pending approval</button>
+        </div>
+      </div>
 
+      {activeTab === 'pending' ? (
+        <PendingPatientsTab />
+      ) : (
       <div className="patients-layout">
         <div className="patients-list">
           <input className="search-bar" placeholder="Search patients..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -532,6 +542,7 @@ export default function PatientsPage() {
           )}
         </div>
       </div>
+      )}
     </>
   )
 }
