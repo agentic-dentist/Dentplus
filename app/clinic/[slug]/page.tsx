@@ -1,77 +1,525 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
-interface Clinic {
+interface Appointment {
   id: string
-  name: string
-  address: string | null
-  phone: string | null
-  primary_color: string | null
+  start_time: string
+  appointment_type: string
+  status: string
+  reason: string
+  booked_via: string
+  patient_confirmed: boolean
+  patient_confirmed_at: string | null
 }
 
-export default function ClinicHomePage() {
-  const params = useParams()
-  const slug = params.slug as string
+interface PatientInfo {
+  full_name: string
+  email: string
+  phone_primary: string | null
+  insurance_provider: string | null
+  intake_status: string
+}
+
+interface WaitlistOffer {
+  id: string
+  appointment_type: string
+  offered_slot_start: string
+  offered_slot_end: string
+  urgency: string
+}
+
+interface TreatmentNote {
+  id: string
+  visit_date: string
+  appointment_type: string | null
+  written_by_name: string | null
+  findings: string | null
+  treatment_done: string | null
+  next_steps: string | null
+}
+
+interface Referral {
+  id: string
+  created_at: string
+  specialist_name: string
+  specialty: string
+  urgency: string
+  status: string
+  notes: string | null
+}
+
+interface Message { role: 'user' | 'assistant'; content: string }
+
+const TYPE_COLOR: Record<string, string> = {
+  cleaning: '#0EA5E9', checkup: '#6366F1', filling: '#A78BFA',
+  emergency: '#F43F5E', consultation: '#F59E0B'
+}
+
+export default function PatientPortal({ params }: { params: Promise<{ slug: string }> }) {
+  const [slug, setSlug] = useState('')
+  const [clinicName, setClinicName] = useState('')
+  const [clinicId, setClinicId] = useState('')
+  const [clinicColor, setClinicColor] = useState('#0EA5E9')
+  const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null)
+  const [patientAuthId, setPatientAuthId] = useState<string | null>(null)
+  const [patientId, setPatientId] = useState<string>('')
+  const [isApproved, setIsApproved] = useState<boolean | null>(null)
+  const [upcoming, setUpcoming] = useState<Appointment[]>([])
+  const [past, setPast] = useState<Appointment[]>([])
+  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes'>('appointments')
+  const [loading, setLoading] = useState(true)
+
+  // Waitlist state
+  const [waitlistLoading, setWaitlistLoading] = useState(false)
+  const [waitlistDone, setWaitlistDone] = useState(false)
+  const [waitlistError, setWaitlistError] = useState('')
+  const [wlType, setWlType] = useState('cleaning')
+  const [wlUrgency, setWlUrgency] = useState('routine')
+  const [wlAnyTime, setWlAnyTime] = useState(true)
+  const [wlDays, setWlDays] = useState<string[]>([])
+  const [wlTimes, setWlTimes] = useState<string[]>([])
+  const [waitlistEntry, setWaitlistEntry] = useState<{ appointment_type: string; urgency: string; created_at: string } | null>(null)
+
+  // Confirmation state
+  const [confirming, setConfirming] = useState<string | null>(null)
+
+  // Waitlist offer state
+  const [waitlistOffer, setWaitlistOffer] = useState<WaitlistOffer | null>(null)
+  const [offerResponding, setOfferResponding] = useState(false)
+
+  const [referrals, setReferrals] = useState<Referral[]>([])
+  const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
+
+  // Booking panel state
+  const [showBooking, setShowBooking] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatStarted, setChatStarted] = useState(false)
+
   const router = useRouter()
   const supabase = createClient()
 
-  const [clinic, setClinic] = useState<Clinic | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  useEffect(() => { params.then(p => setSlug(p.slug)) }, [params])
 
   useEffect(() => {
+    if (!slug) return
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) { router.replace(`/portal`); return }
+      if (!user) { router.push(`/clinic/${slug}/login?type=patient`); return }
+      setPatientAuthId(user.id)
 
-      const res = await fetch(`/api/public-clinic?slug=${slug}`)
-      if (!res.ok) { setLoading(false); return }
-      const data = await res.json()
-      setClinic(data.clinic || data)
+      const { data: account } = await supabase
+        .from('patient_accounts')
+        .select('patient_id, clinic_id, is_approved')
+        .eq('auth_id', user.id).maybeSingle()
+
+      if (!account) { router.push(`/clinic/${slug}`); return }
+      setIsApproved(account.is_approved ?? true)
+      if (!account.is_approved) { setLoading(false); return }
+      setClinicId(account.clinic_id)
+      setPatientId(account.patient_id)
+
+      // Fetch clinic info separately to avoid join RLS issues
+      const [{ data: clinicInfo }, { data: clinicSettings }] = await Promise.all([
+        supabase.from('clinics').select('name').eq('id', account.clinic_id).single(),
+        supabase.from('clinic_settings').select('primary_color').eq('clinic_id', account.clinic_id).single()
+      ])
+
+      setClinicName(clinicInfo?.name || '')
+      setClinicColor(clinicSettings?.primary_color || '#0EA5E9')
+
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('full_name, email, phone_primary, insurance_provider, intake_status')
+        .eq('id', account.patient_id).single()
+
+      if (!patient) { router.push(`/clinic/${slug}`); return }
+      setPatientInfo(patient)
+
+      const now = new Date().toISOString()
+      const [{ data: upcomingData }, { data: pastData }] = await Promise.all([
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
+          .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
+          .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5),
+        supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
+          .eq('clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
+          .lt('start_time', now).order('start_time', { ascending: false }).limit(10)
+      ])
+      setUpcoming(upcomingData || [])
+      setPast(pastData || [])
+
+      // Check if patient is already on waitlist
+      const { data: wlData } = await supabase
+        .from('waiting_list')
+        .select('appointment_type, urgency, created_at')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('status', 'waiting')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (wlData) setWaitlistEntry(wlData)
+
+      // Check for active slot offer
+      const { data: offerData } = await supabase
+        .from('waiting_list')
+        .select('id, appointment_type, offered_slot_start, offered_slot_end, urgency')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('status', 'offered')
+        .not('offered_slot_start', 'is', null)
+        .order('offered_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (offerData) setWaitlistOffer(offerData)
+
+      // Load treatment notes (non-private only)
+      const { data: notesData } = await supabase
+        .from('treatment_notes')
+        .select('id, visit_date, appointment_type, written_by_name, findings, treatment_done, next_steps')
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .eq('is_private', false)
+        .order('visit_date', { ascending: false })
+      setTreatmentNotes(notesData || [])
+
+      // Load referrals
+      const { data: refData } = await supabase
+        .from('referrals')
+        .select('id, created_at, specialist_name, specialty, urgency, status, notes')
+        .eq('from_clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .order('created_at', { ascending: false })
+      setReferrals(refData || [])
+
       setLoading(false)
     }
     init()
   }, [slug])
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password) { setError('Please enter your email and password.'); return }
-    setSubmitting(true); setError('')
+  const formatTime = (iso: string) => new Date(iso).toLocaleDateString('en-CA', {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+  })
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    if (authError) { setError('Invalid email or password.'); setSubmitting(false); return }
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    router.push(`/clinic/${slug}`)
+  }
 
-    const role = authData.user?.user_metadata?.role
-    if (role === 'owner' || ['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
-      router.push('/dashboard')
+  const intakeStatus = patientInfo?.intake_status || 'incomplete'
+
+  // ── Waitlist functions ────────────────────────────────────────────────────
+  const toggleDay = (day: string) => setWlDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  const toggleTime = (time: string) => setWlTimes(prev => prev.includes(time) ? prev.filter(t => t !== time) : [...prev, time])
+
+  const submitWaitlist = async () => {
+    if (!patientId || !clinicId) return
+    setWaitlistLoading(true)
+    setWaitlistError('')
+
+    // Check for duplicate
+    const { data: existing } = await supabase
+      .from('waiting_list')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('patient_id', patientId)
+      .eq('appointment_type', wlType)
+      .eq('status', 'waiting')
+      .single()
+
+    if (existing) {
+      setWaitlistError(`You are already on the waitlist for a ${wlType}.`)
+      setWaitlistLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase.from('waiting_list').insert({
+      clinic_id: clinicId,
+      patient_id: patientId,
+      appointment_type: wlType,
+      urgency: wlUrgency,
+      any_time: wlAnyTime,
+      preferred_days: wlAnyTime ? [] : wlDays,
+      preferred_times: wlAnyTime ? [] : wlTimes,
+      status: 'waiting',
+      priority: wlUrgency === 'urgent' ? 2 : 1
+    }).select('appointment_type, urgency, created_at').single()
+
+    if (error || !data) {
+      setWaitlistError('Something went wrong. Please try again.')
     } else {
-      router.push(`/portal`)
+      setWaitlistEntry(data)
+      setWaitlistDone(true)
+    }
+    setWaitlistLoading(false)
+  }
+
+  // ── Chat functions ──────────────────────────────────────────────────────
+  const openBooking = () => {
+    setShowBooking(true)
+    if (!chatStarted) startChat()
+  }
+
+  const startChat = async () => {
+    setChatStarted(true)
+    setChatLoading(true)
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Hello' }],
+        clinicId,
+        patientAuthId
+      })
+    })
+    const data = await res.json()
+    setMessages([{ role: 'assistant', content: data.message }])
+    setChatLoading(false)
+  }
+
+  const sendChat = async (overrideText?: string) => {
+    const text = (overrideText ?? chatInput).trim()
+    if (!text || chatLoading) return
+    const userMsg: Message = { role: 'user', content: text }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
+    setChatInput('')
+    setChatLoading(true)
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: newMessages, clinicId, patientAuthId })
+    })
+    const data = await res.json()
+    setMessages([...newMessages, { role: 'assistant', content: data.message }])
+    setChatLoading(false)
+  }
+
+  const closeBooking = () => {
+    setShowBooking(false)
+    // Reload appointments in case something was booked — always filter by patientId
+    if (clinicId && patientId) {
+      const now = new Date().toISOString()
+      supabase.from('appointments').select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
+        .eq('clinic_id', clinicId)
+        .eq('patient_id', patientId)
+        .eq('status', 'scheduled')
+        .gte('start_time', now).order('start_time').limit(5)
+        .then(({ data }) => { if (data) setUpcoming(data) })
     }
   }
 
-  const handleGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/api/auth/callback?slug=${slug}&type=patient` }
-    })
+  const confirmAppointment = async (aptId: string) => {
+    setConfirming(aptId)
+    await supabase
+      .from('appointments')
+      .update({ patient_confirmed: true, patient_confirmed_at: new Date().toISOString() })
+      .eq('id', aptId)
+    setUpcoming(prev => prev.map(a => a.id === aptId ? { ...a, patient_confirmed: true } : a))
+    setConfirming(null)
   }
 
-  const color = clinic?.primary_color || '#0EA5E9'
+  const acceptOffer = async () => {
+    if (!waitlistOffer || !patientId || !clinicId) return
+    setOfferResponding(true)
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: "'DM Sans', sans-serif", color: '#94A3B8' }}>
-      Loading...
-    </div>
-  )
+    const { createClient: createAdminClient } = await import('@supabase/supabase-js')
+    // Use API route to handle this server-side with service role
+    const res = await fetch('/api/waitlist/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        waitlistId: waitlistOffer.id,
+        action: 'accept',
+        clinicId,
+        patientId,
+      })
+    })
+    const data = await res.json()
+    if (data.success) {
+      setWaitlistOffer(null)
+      setWaitlistEntry(null)
+      // Reload upcoming appointments
+      const now = new Date().toISOString()
+      const { data: upcomingData } = await supabase
+        .from('appointments')
+        .select('id, start_time, appointment_type, status, reason, booked_via, patient_confirmed, patient_confirmed_at')
+        .eq('clinic_id', clinicId).eq('patient_id', patientId)
+        .eq('status', 'scheduled').gte('start_time', now).order('start_time').limit(5)
+      setUpcoming(upcomingData || [])
+      setTab('appointments')
+    }
+    setOfferResponding(false)
+  }
 
-  if (!clinic) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: "'DM Sans', sans-serif", color: '#94A3B8' }}>
-      Clinic not found.
+  const declineOffer = async () => {
+    if (!waitlistOffer || !clinicId) return
+    setOfferResponding(true)
+    await fetch('/api/waitlist/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        waitlistId: waitlistOffer.id,
+        action: 'decline',
+        clinicId,
+        patientId,
+      })
+    })
+    setWaitlistOffer(null)
+    setWaitlistEntry(null)
+    setOfferResponding(false)
+  }
+
+  const downloadRecords = async () => {
+    if (!patientAuthId || !clinicId) return
+    setDownloadingPDF(true)
+    try {
+      const res = await fetch(`/api/patient/records-pdf?patientAuthId=${patientAuthId}&clinicId=${clinicId}`)
+      if (!res.ok) throw new Error('Failed to fetch records')
+      const data = await res.json()
+
+      // Build print HTML
+      const html = buildRecordHTML(data)
+
+      // Create hidden iframe, print it, remove it
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none'
+      document.body.appendChild(iframe)
+      
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!iframeDoc) throw new Error('Could not access iframe')
+      
+      iframeDoc.open()
+      iframeDoc.write(html)
+      iframeDoc.close()
+      
+      // Wait for content to load then print
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow?.print()
+          setTimeout(() => document.body.removeChild(iframe), 1000)
+        }, 300)
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Could not generate PDF. Please try again.')
+    }
+    setDownloadingPDF(false)
+  }
+
+  const buildRecordHTML = (data: Record<string, any>) => {
+    const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+    const fmtDT = (d: string) => new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })
+    const row = (label: string, value: unknown) => value ? `<tr><td class="lbl">${label}</td><td>${value}</td></tr>` : ''
+    const sec = (n: string, title: string) => `<div class="sec"><h2><span class="num">${n}</span>${title}</h2>`
+
+    const allergies = data.allergies || []
+    const dentalKeys = ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj']
+    const dentalConds = data.dental ? dentalKeys.filter((k: string) => data.dental[k]).map((k: string) => k.replace(/has_|had_/g,'').replace(/_/g,' ')).join(', ') : ''
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>DentPlus-Records-${(data.patient?.full_name||"").replace(/\s+/g,"-")}-${new Date().toISOString().slice(0,10)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:10pt;color:#1a1a2e;padding:15mm}
+.header{text-align:center;border-bottom:2px solid #0EA5E9;padding-bottom:10px;margin-bottom:16px}
+h1{font-size:16pt;font-weight:700;color:#0F172A}
+.clinic{font-size:10pt;color:#64748B}
+.generated{font-size:8pt;color:#94A3B8;margin-top:3px}
+.allergy{background:#FEF2F2;border:1px solid #FECACA;border-radius:4px;padding:8px 12px;margin-bottom:14px;color:#DC2626;font-weight:600;font-size:9pt}
+.sec{margin-bottom:18px;page-break-inside:avoid}
+h2{font-size:11pt;font-weight:700;color:#0F172A;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.num{background:#0EA5E9;color:white;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:8pt;flex-shrink:0}
+table.info{width:100%;border-collapse:collapse}
+table.info td{padding:4px 6px;border-bottom:1px solid #F1F5F9;vertical-align:top;font-size:9pt}
+table.info td.lbl{width:150px;color:#64748B;font-weight:600}
+table.apts{width:100%;border-collapse:collapse;font-size:8.5pt}
+table.apts th{background:#F8FAFC;padding:5px 6px;text-align:left;font-weight:600;color:#64748B;border-bottom:1px solid #E2E8F0}
+table.apts td{padding:5px 6px;border-bottom:1px solid #F8FAFC}
+.note{background:#F8FAFC;border-left:3px solid #0EA5E9;padding:8px 10px;margin-bottom:8px;font-size:9pt}
+.note-hdr{font-weight:700;margin-bottom:4px}
+.note-fld{margin-top:3px}
+.note-key{font-weight:600;color:#64748B}
+.check{color:#10B981;font-weight:700}
+.cross{color:#F43F5E;font-weight:700}
+.footer{margin-top:20px;padding-top:8px;border-top:1px solid #E2E8F0;text-align:center;color:#94A3B8;font-size:7pt}
+@page{margin:10mm}
+</style></head><body>
+<div class="header">
+  <h1>Patient Medical Record</h1>
+  <div class="clinic">${data.clinicName}</div>
+  <div class="generated">Generated ${new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'})}</div>
+</div>
+${allergies.length > 0 ? `<div class="allergy">⚠ Allergies: ${allergies.join(', ')}</div>` : ''}
+${sec('1','Patient Information')}
+  <table class="info">
+    ${row('Full name', data.patient?.full_name)}
+    ${row('Date of birth', data.patient?.date_of_birth ? fmtDate(data.patient.date_of_birth) : null)}
+    ${row('Phone', data.patient?.phone_primary)}
+    ${row('Email', data.patient?.email)}
+    ${row('Address', [data.patient?.address_line1, data.patient?.city, data.patient?.postal_code].filter(Boolean).join(', ') || null)}
+    ${data.patient?.emergency_contact_name ? row('Emergency contact', `${data.patient.emergency_contact_name} (${data.patient.emergency_contact_relationship||'Contact'}) — ${data.patient.emergency_contact_phone||'—'}`) : ''}
+  </table></div>
+${data.insurance ? `${sec('2','Insurance')}<table class="info">
+    ${row('Provider', data.insurance.insurance_provider)}
+    ${row('Policy number', data.insurance.insurance_number)}
+    ${row('Policy holder', data.insurance.policy_holder_name)}
+  </table></div>` : ''}
+${data.medical ? `${sec('3','Medical History')}<table class="info">
+    ${allergies.length > 0 ? row('Allergies', allergies.join(', ')) : ''}
+    ${row('Medications', Array.isArray(data.medical.medications) ? data.medical.medications.join(', ') : data.medical.medications)}
+    ${row('Conditions', Array.isArray(data.medical.conditions) ? data.medical.conditions.join(', ') : data.medical.conditions)}
+    ${row('Blood type', data.medical.blood_type)}
+  </table></div>` : ''}
+${data.dental ? `${sec('4','Dental History')}<table class="info">
+    ${row('Last visit', data.dental.last_dental_visit)}
+    ${data.dental.dental_anxiety ? row('Dental anxiety', 'Yes') : ''}
+    ${dentalConds ? row('Conditions', dentalConds) : ''}
+  </table></div>` : ''}
+${data.appointments?.length > 0 ? `${sec('5','Appointment History')}
+  <table class="apts"><thead><tr><th>Date</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead><tbody>
+    ${data.appointments.map((a: Record<string,string>) => `<tr><td>${fmtDT(a.start_time)}</td><td style="text-transform:capitalize">${a.appointment_type}</td><td>${a.status}</td><td>${a.reason||'—'}</td></tr>`).join('')}
+  </tbody></table></div>` : ''}
+${data.treatmentNotes?.length > 0 ? `${sec('6','Visit Notes')}
+  ${data.treatmentNotes.map((n: Record<string,string>) => `<div class="note">
+    <div class="note-hdr">${fmtDate(n.visit_date)}${n.appointment_type?' — '+n.appointment_type:''}${n.written_by_name?' · '+n.written_by_name:''}</div>
+    ${n.findings?`<div class="note-fld"><span class="note-key">Findings:</span> ${n.findings}</div>`:''}
+    ${n.treatment_done?`<div class="note-fld"><span class="note-key">Treatment:</span> ${n.treatment_done}</div>`:''}
+    ${n.next_steps?`<div class="note-fld"><span class="note-key">Next steps:</span> ${n.next_steps}</div>`:''}
+  </div>`).join('')}</div>` : ''}
+${data.consents ? `${sec('7','Consents')}
+  ${[['Treatment consent',data.consents.consent_treatment],['PIPEDA / Privacy',data.consents.consent_pipeda],['Email communications',data.consents.consent_communication_email],['SMS reminders',data.consents.consent_communication_sms]]
+    .map(([l,v])=>`<div>${v?'<span class="check">✓</span>':'<span class="cross">✗</span>'} ${l}</div>`).join('')}
+  ${data.consents.signature_text?`<div style="margin-top:6px;font-size:8pt;color:#64748B">Signed: ${data.consents.signature_text}${data.consents.signed_at?' on '+fmtDate(data.consents.signed_at):''}</div>`:''}
+</div>` : ''}
+<div class="footer">Generated by DentPlus for ${data.clinicName} — Confidential patient record — PIPEDA compliant</div>
+</body></html>`
+  }
+
+  const NAV = [
+    { icon: '▦', label: 'Appointments', key: 'appointments' },
+    { icon: '◈', label: 'My info', key: 'profile' },
+    { icon: '◷', label: 'Waitlist', key: 'waiting' },
+    { icon: '→', label: 'Referrals', key: 'referrals' },
+    { icon: '◎', label: 'Visit notes', key: 'notes' },
+  ]
+
+  const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
+
+  if (isApproved === false) return (
+    <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', padding: 40, maxWidth: 400, width: '100%', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: 24 }}>⏳</div>
+        <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 0.75rem' }}>Account pending approval</h2>
+        <p style={{ color: '#64748B', fontSize: 14, lineHeight: 1.6, margin: '0 0 1rem' }}>Your account is waiting for clinic staff approval. You will receive an email once approved.</p>
+        <button onClick={() => supabase.auth.signOut().then(() => router.push(`/clinic/${slug}`))} style={{ marginTop: 8, background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 20px', fontSize: 13, color: '#64748B', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Sign out</button>
+      </div>
     </div>
   )
 
@@ -80,96 +528,566 @@ export default function ClinicHomePage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'DM Sans',sans-serif;background:#F8FAFC;min-height:100vh}
-        .page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px}
-        .card{background:white;border-radius:20px;border:1px solid #E2E8F0;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.06);overflow:hidden}
-        .clinic-header{padding:32px 40px 24px;text-align:center;border-bottom:1px solid #F1F5F9}
-        .logo-wrap{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px}
-        .clinic-name{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0F172A;margin-bottom:4px}
-        .clinic-info{font-size:12px;color:#94A3B8;margin-bottom:2px}
-        .form-body{padding:28px 40px 32px}
-        .form-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:4px}
-        .form-sub{font-size:13px;color:#94A3B8;margin-bottom:20px}
-        .field{margin-bottom:14px}
-        label{display:block;font-size:12px;font-weight:500;color:#64748B;margin-bottom:5px}
-        input{width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;color:#0F172A;outline:none;transition:border-color .15s}
-        input:focus{border-color:var(--c)}
-        .btn-primary{width:100%;padding:12px;border-radius:10px;color:white;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;margin-top:4px;transition:filter .15s}
-        .btn-primary:hover{filter:brightness(.9)}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .divider{display:flex;align-items:center;gap:10px;margin:16px 0}
-        .divider-line{flex:1;height:1px;background:#F1F5F9}
-        .divider-text{font-size:11px;color:#CBD5E1}
-        .btn-google{width:100%;padding:10px;border-radius:10px;border:1.5px solid #E2E8F0;background:white;font-size:13px;font-family:'DM Sans',sans-serif;color:#475569;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}
-        .btn-google:hover{background:#F8FAFC}
-        .error{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:13px;color:#DC2626;margin-bottom:14px}
-        .register-hint{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-top:16px;font-size:12px;color:#94A3B8;text-align:center;line-height:1.5}
-        .staff-link{display:block;text-align:center;font-size:12px;color:#CBD5E1;text-decoration:none;margin-top:12px;transition:color .15s}
-        .staff-link:hover{color:#94A3B8}
-        .footer{margin-top:20px;font-size:12px;color:#CBD5E1;text-align:center}
-        .footer a{color:#94A3B8;text-decoration:none}
+        body{font-family:'DM Sans',sans-serif;background:#F0F4F8;color:#0F172A}
+        .layout{display:flex;min-height:100vh}
+        .sidebar{width:240px;background:#0F172A;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50}
+        .logo-area{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.06)}
+        .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+        .logo-icon{width:30px;height:30px;background:#0EA5E9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px}
+        .logo-text{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#F8FAFC;letter-spacing:-0.3px}
+        .logo-sub{font-size:11px;color:rgba(148,163,184,0.5);padding-left:40px;margin-top:2px}
+        .nav{padding:12px 10px;flex:1}
+        .nav-label{font-size:9.5px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:rgba(148,163,184,0.25);padding:10px 10px 6px}
+        .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;color:rgba(148,163,184,0.5);font-size:13px;cursor:pointer;margin-bottom:1px;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;position:relative}
+        .nav-item:hover{background:rgba(255,255,255,0.05);color:#CBD5E1}
+        .nav-item.active{background:rgba(14,165,233,0.1);color:#0EA5E9;font-weight:500}
+        .nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:55%;background:#0EA5E9;border-radius:0 2px 2px 0}
+        .nav-icon{font-size:13px;width:18px;text-align:center}
+        .intake-sidebar{margin:0 12px 12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:all .15s;border:none;width:calc(100% - 24px);text-align:left;font-family:'DM Sans',sans-serif}
+        .intake-sidebar.incomplete{background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25)}
+        .intake-sidebar.pending{background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15)}
+        .intake-sidebar.approved{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)}
+        .intake-sidebar.rejected{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2)}
+        .intake-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;margin-right:6px}
+        .intake-label{font-size:11px;font-weight:600;letter-spacing:.3px}
+        .book-btn-sidebar{margin:0 12px 12px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:8px;color:#0EA5E9;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
+        .book-btn-sidebar:hover{background:rgba(14,165,233,0.14)}
+        .book-dot{width:5px;height:5px;border-radius:50%;background:#0EA5E9;box-shadow:0 0 6px rgba(14,165,233,0.8)}
+        .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.06)}
+        .patient-name{font-size:13px;color:#CBD5E1;font-weight:500;margin-bottom:2px}
+        .signout{font-size:12px;color:rgba(148,163,184,0.4);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;transition:color .15s}
+        .signout:hover{color:#94A3B8}
+        .main{flex:1;margin-left:240px;padding:36px 40px;min-height:100vh}
+        .page-header{margin-bottom:28px}
+        .page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.4px}
+        .page-sub{font-size:13px;color:#94A3B8;margin-top:3px}
+        .intake-banner{background:white;border:1.5px solid #FDE68A;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+        .intake-banner-icon{font-size:20px;flex-shrink:0}
+        .intake-banner-title{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:2px}
+        .intake-banner-sub{font-size:12px;color:#64748B}
+        .intake-banner-btn{padding:9px 18px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+        .intake-approved-banner{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#166534;font-weight:500}
+        .intake-pending-banner{background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:12px 16px;margin-bottom:24px;display:flex;align-items:center;gap:10px;font-size:13px;color:#92400E;font-weight:500}
+        .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
+        .card-header{padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
+        .card-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:#0F172A}
+        .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC}
+        .apt-row:last-child{border-bottom:none}
+        .apt-bar{width:3px;height:36px;border-radius:2px;flex-shrink:0}
+        .apt-info{flex:1}
+        .apt-type{font-size:14px;font-weight:500;color:#0F172A;text-transform:capitalize}
+        .apt-time{font-size:12px;color:#64748B;margin-top:2px}
+        .apt-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px}
+        .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
+        .offer-banner{background:white;border:2px solid #0EA5E9;border-radius:14px;padding:20px 24px;margin-bottom:24px;position:relative;overflow:hidden}
+        .offer-banner::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0EA5E9,#6366F1)}
+        .offer-pulse{display:inline-flex;align-items:center;gap:6px;background:#EFF6FF;color:#0EA5E9;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:12px;letter-spacing:.3px}
+        .offer-dot{width:6px;height:6px;border-radius:50%;background:#0EA5E9;animation:pulse 1.5s infinite}
+        @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+        .offer-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0F172A;margin-bottom:4px}
+        .offer-slot{font-size:14px;color:#0EA5E9;font-weight:600;margin-bottom:12px}
+        .offer-sub{font-size:13px;color:#64748B;margin-bottom:16px;line-height:1.5}
+        .offer-actions{display:flex;gap:10px}
+        .offer-accept{flex:1;padding:11px;background:#0EA5E9;color:white;border:none;border-radius:9px;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:background .15s}
+        .offer-accept:hover{background:#0284C7}
+        .offer-accept:disabled{opacity:.6;cursor:not-allowed}
+        .offer-decline{padding:11px 20px;background:white;color:#94A3B8;border:1.5px solid #E2E8F0;border-radius:9px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s}
+        .offer-decline:hover{border-color:#F43F5E;color:#F43F5E}
+        .offer-decline:disabled{opacity:.6;cursor:not-allowed}
+        .confirm-btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:1.5px solid #E2E8F0;background:white;color:#64748B;transition:all .15s;white-space:nowrap}
+        .confirm-btn:hover{border-color:#10B981;color:#10B981;background:#F0FDF4}
+        .confirm-btn:disabled{opacity:.6;cursor:not-allowed}
+        .confirmed-badge{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#10B981;white-space:nowrap}
+        .badge-past{background:#F8FAFC;color:#CBD5E1}
+        .badge-cancelled{background:#FEF2F2;color:#F87171}
+        .profile-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
+        .profile-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F8FAFC}
+        .profile-row:last-child{border-bottom:none}
+        .profile-label{font-size:12px;color:#94A3B8;font-weight:500}
+        .profile-value{font-size:14px;color:#0F172A}
+        .status-row{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;margin-top:16px}
+        .start-btn{padding:8px 16px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .waitlist-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:32px;text-align:center}
+        .waitlist-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:8px}
+        .waitlist-sub{font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.6;max-width:360px;margin-left:auto;margin-right:auto}
+        .waitlist-btn{display:inline-block;padding:10px 20px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none}
+        .section-title{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;margin-bottom:12px}
+        .empty{padding:32px 20px;text-align:center;color:#CBD5E1;font-size:13px}
+
+        /* ── Booking panel ── */
+        .booking-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200}
+        .booking-panel{position:fixed;top:0;right:0;width:420px;height:100vh;background:white;z-index:201;display:flex;flex-direction:column;box-shadow:-4px 0 32px rgba(0,0,0,0.15)}
+        .booking-header{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #F1F5F9}
+        .booking-header-left{display:flex;align-items:center;gap:10px}
+        .booking-avatar{width:32px;height:32px;border-radius:50%;background:#E0F2FE;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+        .booking-title{font-size:14px;font-weight:600;color:#0F172A}
+        .booking-status{font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px;margin-top:1px}
+        .status-dot-green{width:5px;height:5px;border-radius:50%;background:#4ADE80}
+        .close-btn{width:30px;height:30px;border-radius:8px;border:1px solid #E2E8F0;background:white;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:#64748B;flex-shrink:0}
+        .close-btn:hover{background:#F8FAFC}
+        .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+        .bubble-wrap{display:flex;align-items:flex-end;gap:8px}
+        .bubble-wrap.user{flex-direction:row-reverse}
+        .bot-icon{width:24px;height:24px;border-radius:50%;background:#E0F2FE;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px}
+        .bubble{max-width:80%;padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.55;white-space:pre-wrap}
+        .bubble.assistant{background:#F1F5F9;color:#1E293B;border-bottom-left-radius:3px}
+        .bubble.user{color:white;border-bottom-right-radius:3px}
+        .typing{display:flex;align-items:center;gap:4px;padding:9px 13px;background:#F1F5F9;border-radius:14px;border-bottom-left-radius:3px;width:fit-content}
+        .tdot{width:5px;height:5px;border-radius:50%;background:#94A3B8;animation:bounce 1.2s infinite}
+        .tdot:nth-child(2){animation-delay:.2s}
+        .tdot:nth-child(3){animation-delay:.4s}
+        @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}
+        .chips-row{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px}
+        .chip{padding:5px 12px;border-radius:20px;border:1.5px solid;font-size:11px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;background:white;transition:all .15s;white-space:nowrap}
+        .chat-footer{padding:12px 16px;border-top:1px solid #E2E8F0;background:white;flex-shrink:0}
+        .chat-input-row{display:flex;gap:8px;align-items:center}
+        .chat-input{flex:1;padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:20px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;color:#1E293B;transition:border-color .15s}
+        .chat-input:focus{border-color:#0EA5E9}
+        .send-btn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:filter .15s}
+        .send-btn:hover{filter:brightness(.9)}
+        .send-btn:disabled{opacity:.4;cursor:not-allowed}
       `}</style>
-      <style>{`:root{--c:${color}}`}</style>
 
-      <div className="page">
-        <div className="card">
-
-          {/* Clinic branding */}
-          <div className="clinic-header">
-            <div className="logo-wrap" style={{ background: `${color}18` }}>🦷</div>
-            <div className="clinic-name">{clinic.name}</div>
-            {clinic.address && <div className="clinic-info">{clinic.address}</div>}
-            {clinic.phone && <div className="clinic-info">{clinic.phone}</div>}
+      <div className="layout">
+        {/* Sidebar */}
+        <aside className="sidebar">
+          <div className="logo-area">
+            <div className="logo-mark">
+              <div className="logo-icon">🦷</div>
+              <div className="logo-text">{clinicName || 'DentPlus'}</div>
+            </div>
+            <div className="logo-sub">Patient portal</div>
           </div>
 
-          {/* Login form */}
-          <div className="form-body">
-            <div className="form-title">Patient sign in</div>
-            <div className="form-sub">Access your portal, appointments and records</div>
+          <nav className="nav">
+            <div className="nav-label">My account</div>
+            {NAV.map(item => (
+              <button key={item.key}
+                className={`nav-item ${tab === item.key ? 'active' : ''}`}
+                onClick={() => setTab(item.key as typeof tab)}>
+                <span className="nav-icon">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </nav>
 
-            {error && <div className="error">{error}</div>}
+          <button
+            className={`intake-sidebar ${intakeStatus === 'approved' ? 'approved' : intakeStatus === 'pending_review' ? 'pending' : intakeStatus === 'rejected' ? 'rejected' : 'incomplete'}`}
+            onClick={() => (intakeStatus === 'incomplete' || intakeStatus === 'rejected') && router.push(`/clinic/${slug}/intake`)}
+            style={{ cursor: (intakeStatus === 'incomplete' || intakeStatus === 'rejected') ? 'pointer' : 'default' }}
+          >
+            <span className="intake-dot" style={{
+              background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : intakeStatus === 'rejected' ? '#F43F5E' : '#F59E0B'
+            }} />
+            <span className="intake-label" style={{
+              color: intakeStatus === 'approved' ? '#065F46' : intakeStatus === 'pending_review' ? '#92400E' : intakeStatus === 'rejected' ? '#9F1239' : '#92400E'
+            }}>
+              {intakeStatus === 'approved' ? '✓ File approved' : intakeStatus === 'pending_review' ? 'Intake pending review' : intakeStatus === 'rejected' ? 'Intake rejected — resubmit' : '→ Complete intake form'}
+            </span>
+          </button>
 
-            <div className="field">
-              <label>Email address</label>
-              <input type="email" placeholder="you@example.com" value={email}
-                onChange={e => setEmail(e.target.value)} autoComplete="email" />
-            </div>
-            <div className="field">
-              <label>Password</label>
-              <input type="password" placeholder="••••••••" value={password}
-                onChange={e => setPassword(e.target.value)} autoComplete="current-password"
-                onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-            </div>
+          {/* Book button opens panel instead of new page */}
+          <button className="book-btn-sidebar" onClick={openBooking}>
+            <div className="book-dot" />
+            Book an appointment
+          </button>
 
-            <button className="btn-primary" style={{ background: color }}
-              onClick={handleLogin} disabled={submitting}>
-              {submitting ? 'Signing in...' : 'Sign in'}
-            </button>
-
-            <div className="divider">
-              <div className="divider-line" />
-              <div className="divider-text">or</div>
-              <div className="divider-line" />
-            </div>
-
-            <button className="btn-google" onClick={handleGoogle}>
-              <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-              Continue with Google
-            </button>
-
-            <div className="register-hint">
-              New patient? Ask our front desk to register you or visit<br />
-              <strong style={{ color: '#475569' }}>{slug}.dentplus.ca/register</strong>
-            </div>
-
-            <a href="/login?type=staff" className="staff-link">
-              Staff & clinic owner login →
-            </a>
+          <div className="sidebar-footer">
+            <div className="patient-name">{patientInfo?.full_name || ''}</div>
+            <button className="signout" onClick={signOut}>Sign out</button>
           </div>
-        </div>
+        </aside>
 
-        <div className="footer">Powered by <a href="https://dentplus.ca">DentPlus</a></div>
+        {/* Main content */}
+        <main className="main">
+          <div className="page-header">
+            <div className="page-title">
+              Hello{patientInfo ? `, ${patientInfo.full_name.split(' ')[0]}` : ''} 👋
+            </div>
+            <div className="page-sub">
+              {upcoming.length > 0
+                ? `You have ${upcoming.length} upcoming appointment${upcoming.length > 1 ? 's' : ''}`
+                : 'No upcoming appointments'}
+            </div>
+          </div>
+
+          {/* Intake banners */}
+          {intakeStatus === 'incomplete' && (
+            <div className="intake-banner">
+              <div className="intake-banner-icon">📋</div>
+              <div>
+                <div className="intake-banner-title">Action required — complete your intake form</div>
+                <div className="intake-banner-sub">Required before your first visit. Takes about 5 minutes.</div>
+              </div>
+              <button className="intake-banner-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>Start now</button>
+            </div>
+          )}
+          {intakeStatus === 'rejected' && (
+            <div className="intake-banner" style={{ borderColor: '#FECACA' }}>
+              <div className="intake-banner-icon">⚠️</div>
+              <div>
+                <div className="intake-banner-title">Your intake form needs corrections</div>
+                <div className="intake-banner-sub">The clinic has requested changes. Please resubmit.</div>
+              </div>
+              <button className="intake-banner-btn" style={{ background: '#F43F5E' }} onClick={() => router.push(`/clinic/${slug}/intake`)}>Resubmit</button>
+            </div>
+          )}
+          {intakeStatus === 'pending_review' && (
+            <div className="intake-pending-banner">⏳ Your intake form has been submitted and is pending staff review.</div>
+          )}
+          {intakeStatus === 'approved' && (
+            <div className="intake-approved-banner">✓ Your patient file is complete and approved.</div>
+          )}
+
+          {/* Slot offer banner — shown when Matchmaker found a slot for this patient */}
+          {waitlistOffer && (
+            <div className="offer-banner">
+              <div className="offer-pulse">
+                <div className="offer-dot" />
+                SLOT AVAILABLE
+              </div>
+              <div className="offer-title">A spot just opened up for you!</div>
+              <div className="offer-slot">
+                {waitlistOffer.appointment_type.charAt(0).toUpperCase() + waitlistOffer.appointment_type.slice(1)} — {new Date(waitlistOffer.offered_slot_start).toLocaleDateString('en-CA', {
+                  weekday: 'long', month: 'long', day: 'numeric',
+                  hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto'
+                })}
+              </div>
+              <div className="offer-sub">
+                This slot was reserved for you from the waitlist. Accept to confirm your appointment, or decline to pass — we will notify the next patient.
+              </div>
+              <div className="offer-actions">
+                <button className="offer-accept" onClick={acceptOffer} disabled={offerResponding}>
+                  {offerResponding ? 'Processing...' : 'Accept appointment'}
+                </button>
+                <button className="offer-decline" onClick={declineOffer} disabled={offerResponding}>
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="empty">Loading...</div>
+          ) : tab === 'appointments' ? (
+            <>
+              {upcoming.length > 0 && (
+                <>
+                  <div className="section-title">Upcoming</div>
+                  <div className="card">
+                    {upcoming.map(apt => {
+                      const hoursUntil = (new Date(apt.start_time).getTime() - Date.now()) / 36e5
+                      const showConfirm = hoursUntil <= 48 && hoursUntil > 0
+                      return (
+                        <div key={apt.id} className="apt-row">
+                          <div className="apt-bar" style={{ background: TYPE_COLOR[apt.appointment_type] || '#E2E8F0' }} />
+                          <div className="apt-info">
+                            <div className="apt-type">{apt.appointment_type}</div>
+                            <div className="apt-time">{formatTime(apt.start_time)}</div>
+                            {apt.reason && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{apt.reason}</div>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                            {apt.patient_confirmed ? (
+                              <span className="confirmed-badge">✓ Confirmed</span>
+                            ) : showConfirm ? (
+                              <button
+                                className="confirm-btn"
+                                onClick={() => confirmAppointment(apt.id)}
+                                disabled={confirming === apt.id}
+                              >
+                                {confirming === apt.id ? 'Confirming...' : 'Confirm attendance'}
+                              </button>
+                            ) : (
+                              <span className="apt-badge badge-upcoming">Scheduled</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+              <div className="section-title" style={{ marginTop: upcoming.length > 0 ? '20px' : '0' }}>Past visits</div>
+              {past.length === 0 ? (
+                <div className="empty">No past visits yet</div>
+              ) : (
+                <div className="card">
+                  {past.map(apt => (
+                    <div key={apt.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: apt.status === 'cancelled' ? '#F87171' : '#E2E8F0' }} />
+                      <div className="apt-info">
+                        <div className="apt-type">{apt.appointment_type}</div>
+                        <div className="apt-time">{formatTime(apt.start_time)}</div>
+                      </div>
+                      <span className={`apt-badge ${apt.status === 'cancelled' ? 'badge-cancelled' : 'badge-past'}`}>{apt.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : tab === 'profile' ? (
+            <>
+              <div className="section-title">Personal information</div>
+              <div className="profile-card">
+                {[
+                  { label: 'Full name', value: patientInfo?.full_name },
+                  { label: 'Email', value: patientInfo?.email },
+                  { label: 'Phone', value: patientInfo?.phone_primary || 'Not provided' },
+                  { label: 'Insurance', value: patientInfo?.insurance_provider || 'Not on file' },
+                ].map(row => (
+                  <div key={row.label} className="profile-row">
+                    <span className="profile-label">{row.label}</span>
+                    <span className="profile-value">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '20px', marginBottom: '4px' }}>
+                <div className="section-title" style={{ margin: 0 }}>Intake form</div>
+                <button
+                  onClick={downloadRecords}
+                  disabled={downloadingPDF}
+                  style={{ padding: '7px 16px', background: '#0F172A', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif', opacity: downloadingPDF ? .6 : 1 }}>
+                  {downloadingPDF ? 'Generating PDF...' : '↓ Download my records'}
+                </button>
+              </div>
+              <div className="status-row">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: intakeStatus === 'approved' ? '#10B981' : intakeStatus === 'pending_review' ? '#F59E0B' : '#CBD5E1' }} />
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 500, color: '#0F172A', textTransform: 'capitalize' }}>{intakeStatus === 'incomplete' ? 'Not started' : intakeStatus.replace('_', ' ')}</div>
+                    <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '2px' }}>
+                      {intakeStatus === 'incomplete' && 'Required before your first visit'}
+                      {intakeStatus === 'pending_review' && 'Submitted — awaiting staff review'}
+                      {intakeStatus === 'approved' && 'Your patient file is complete'}
+                      {intakeStatus === 'rejected' && 'Please resubmit with corrections'}
+                    </div>
+                  </div>
+                </div>
+                {(intakeStatus === 'incomplete' || intakeStatus === 'rejected') && (
+                  <button className="start-btn" onClick={() => router.push(`/clinic/${slug}/intake`)}>
+                    {intakeStatus === 'rejected' ? 'Resubmit' : 'Start'}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : tab === 'notes' ? (
+            <>
+              <div className="section-title">Visit notes</div>
+              {treatmentNotes.length === 0 ? (
+                <div className="empty">No visit notes on file yet</div>
+              ) : (
+                <div className="card">
+                  {treatmentNotes.map(note => (
+                    <div key={note.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: '#6366F1' }} />
+                      <div className="apt-info">
+                        <div className="apt-type">{note.appointment_type || 'Visit'}</div>
+                        <div className="apt-time">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}{note.written_by_name ? ' · ' + note.written_by_name : ''}</div>
+                        {note.findings && <div style={{ fontSize: '12px', color: '#64748B', marginTop: '4px', lineHeight: '1.4' }}>{note.findings}</div>}
+                        {note.next_steps && <div style={{ fontSize: '11px', color: '#0EA5E9', marginTop: '4px' }}>Next steps: {note.next_steps}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : tab === 'referrals' ? (
+            <>
+              <div className="section-title">My referrals</div>
+              {referrals.length === 0 ? (
+                <div className="empty">No referrals on file yet</div>
+              ) : (
+                <div className="card">
+                  {referrals.map(r => (
+                    <div key={r.id} className="apt-row">
+                      <div className="apt-bar" style={{ background: '#6366F1' }} />
+                      <div className="apt-info">
+                        <div className="apt-type" style={{ textTransform: 'capitalize' }}>{r.specialty.replace('_', ' ')} — {r.specialist_name}</div>
+                        <div className="apt-time">{new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                        {r.notes && <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>{r.notes}</div>}
+                      </div>
+                      <span className={"apt-badge" + (r.status === 'sent' ? ' badge-upcoming' : ' badge-past')} style={{ textTransform: 'capitalize' }}>{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="section-title">Waiting list</div>
+              {waitlistEntry ? (
+                <div className="waitlist-card">
+                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
+                  <div className="waitlist-title">You are on the waitlist</div>
+                  <div className="waitlist-sub">
+                    We will contact you as soon as a <strong>{waitlistEntry.appointment_type}</strong> slot opens.
+                    {waitlistEntry.urgency === 'urgent' && ' Your request is marked as urgent.'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '8px' }}>
+                    Added {new Date(waitlistEntry.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+              ) : (
+                <div className="waitlist-card" style={{ textAlign: 'left', padding: '24px' }}>
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontSize: '16px', fontWeight: 700, color: '#0F172A', marginBottom: '4px' }}>Join the waiting list</div>
+                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px' }}>We will notify you when a slot opens that matches your needs.</div>
+
+                  {waitlistError && (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#DC2626', marginBottom: '14px' }}>
+                      {waitlistError}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '6px' }}>Appointment type</div>
+                    <select style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E2E8F0', borderRadius: '8px', fontSize: '14px', fontFamily: 'DM Sans, sans-serif', outline: 'none', background: 'white' }}
+                      value={wlType} onChange={e => setWlType(e.target.value)}>
+                      {['cleaning', 'checkup', 'filling', 'consultation', 'emergency'].map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '6px' }}>Urgency</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {['routine', 'urgent'].map(u => (
+                        <button key={u} onClick={() => setWlUrgency(u)}
+                          style={{ flex: 1, padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                            background: wlUrgency === u ? '#0F172A' : 'white',
+                            color: wlUrgency === u ? 'white' : '#64748B',
+                            borderColor: wlUrgency === u ? '#0F172A' : '#E2E8F0' }}>
+                          {u.charAt(0).toUpperCase() + u.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px' }}>Scheduling preference</div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748B', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={wlAnyTime} onChange={e => setWlAnyTime(e.target.checked)} />
+                        Any time works
+                      </label>
+                    </div>
+                    {!wlAnyTime && (
+                      <>
+                        <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '6px' }}>Preferred days</div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                          {['monday','tuesday','wednesday','thursday','friday'].map(day => (
+                            <button key={day} onClick={() => toggleDay(day)}
+                              style={{ padding: '5px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                                background: wlDays.includes(day) ? '#0F172A' : 'white',
+                                color: wlDays.includes(day) ? 'white' : '#64748B',
+                                borderColor: wlDays.includes(day) ? '#0F172A' : '#E2E8F0' }}>
+                              {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '6px' }}>Preferred times</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {['morning', 'afternoon', 'evening'].map(time => (
+                            <button key={time} onClick={() => toggleTime(time)}
+                              style={{ flex: 1, padding: '6px', borderRadius: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: '1.5px solid', transition: 'all .15s',
+                                background: wlTimes.includes(time) ? '#0F172A' : 'white',
+                                color: wlTimes.includes(time) ? 'white' : '#64748B',
+                                borderColor: wlTimes.includes(time) ? '#0F172A' : '#E2E8F0' }}>
+                              {time.charAt(0).toUpperCase() + time.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <button onClick={submitWaitlist} disabled={waitlistLoading}
+                    style={{ width: '100%', padding: '11px', background: '#0F172A', color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 500, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', marginTop: '4px', opacity: waitlistLoading ? .6 : 1 }}>
+                    {waitlistLoading ? 'Adding...' : 'Join waiting list'}
+                  </button>
+
+                  <div style={{ fontSize: '12px', color: '#94A3B8', textAlign: 'center', marginTop: '10px' }}>
+                    Or tell our AI agent — open <button onClick={openBooking} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: '12px', fontFamily: 'DM Sans, sans-serif', padding: 0 }}>booking chat</button> and say "add me to the waitlist"
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </main>
       </div>
+
+      {/* Booking panel slide-in */}
+      {showBooking && (
+        <>
+          <div className="booking-overlay" onClick={closeBooking} />
+          <div className="booking-panel">
+            <div className="booking-header" style={{ borderTop: `3px solid ${clinicColor}` }}>
+              <div className="booking-header-left">
+                <div className="booking-avatar">🤖</div>
+                <div>
+                  <div className="booking-title">{clinicName}</div>
+                  <div className="booking-status">
+                    <div className="status-dot-green" />
+                    AI Front Desk — Available 24/7
+                  </div>
+                </div>
+              </div>
+              <button className="close-btn" onClick={closeBooking}>✕</button>
+            </div>
+
+            <div className="chat-messages">
+              {messages.map((msg, i) => (
+                <div key={i} className={`bubble-wrap ${msg.role}`}>
+                  {msg.role === 'assistant' && <div className="bot-icon">🤖</div>}
+                  <div className={`bubble ${msg.role}`} style={msg.role === 'user' ? { background: clinicColor } : {}}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="bubble-wrap assistant">
+                  <div className="bot-icon">🤖</div>
+                  <div className="typing">
+                    <div className="tdot" /><div className="tdot" /><div className="tdot" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {messages.length === 1 && !chatLoading && (
+              <div className="chips-row">
+                {CHIPS.map(chip => (
+                  <button key={chip} className="chip"
+                    style={{ borderColor: clinicColor, color: clinicColor }}
+                    onClick={() => sendChat(chip)}>
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="chat-footer">
+              <div className="chat-input-row">
+                <input
+                  className="chat-input"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+                  placeholder="Type a message..."
+                  disabled={chatLoading}
+                  autoFocus
+                />
+                <button className="send-btn" style={{ background: clinicColor }}
+                  onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }
