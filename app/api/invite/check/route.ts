@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     const { token, password } = await request.json()
     if (!token || !password) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
