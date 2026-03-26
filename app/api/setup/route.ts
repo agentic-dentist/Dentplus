@@ -170,11 +170,31 @@ export async function POST(req: NextRequest) {
       await supabase.from('clinics').update({ setup_step: 4, ...(goLive ? { setup_complete: true, is_active: true } : {}) }).eq('id', clinicId)
 
       if (goLive) {
-        const { data: pendingInvites } = await supabase.from('staff_invites').select('id, email, full_name, token').eq('clinic_id', clinicId).eq('status', 'pending')
+        const { data: clinicInfo } = await supabase.from('clinics').select('name').eq('id', clinicId).single()
+        const clinicName = clinicInfo?.name || 'your clinic'
+        const { data: pendingInvites } = await supabase.from('staff_invites').select('id, email, full_name, role, token').eq('clinic_id', clinicId).eq('status', 'pending')
+
         for (const invite of pendingInvites || []) {
           const inviteLink = `${process.env.APP_URL}/invite/accept?token=${invite.token}`
-          await supabase.auth.admin.generateLink({ type: 'recovery', email: invite.email, options: { redirectTo: inviteLink } })
-          console.log(`Invite for ${invite.email}: ${inviteLink}`) // replace with Resend when ready
+
+          if (process.env.RESEND_API_KEY) {
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: 'DentPlus <noreply@dentplus.ca>',
+                to: invite.email,
+                subject: `You have been invited to join ${clinicName} on DentPlus`,
+                html: `<!DOCTYPE html><html><body style="background:#f8fafc;font-family:'Helvetica Neue',sans-serif;margin:0;padding:40px 20px;"><div style="max-width:480px;margin:0 auto;background:white;border:1px solid #e2e8f0;border-radius:16px;padding:40px;"><h1 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">You are invited! 👋</h1><p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 8px;">Hi ${invite.full_name},</p><p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">You have been invited to join <strong>${clinicName}</strong> on DentPlus as a <strong>${invite.role}</strong>. Click below to set up your account.</p><a href="${inviteLink}" style="display:block;text-align:center;background:#0F172A;color:#fff;text-decoration:none;padding:14px 24px;border-radius:10px;font-size:15px;font-weight:600;margin-bottom:16px;">Accept invitation</a><p style="color:#94a3b8;font-size:12px;margin:0;text-align:center;">Or visit: <a href="${inviteLink}" style="color:#0EA5E9;">${inviteLink}</a></p><p style="color:#94a3b8;font-size:11px;margin:24px 0 0;border-top:1px solid #f1f5f9;padding-top:16px;">This invitation expires in 7 days.</p></div></body></html>`,
+              }),
+            })
+            await supabase.from('staff_invites').update({ status: 'sent' }).eq('id', invite.id)
+          } else {
+            console.log(`[INVITE] ${invite.email}: ${inviteLink}`)
+          }
         }
       }
 
