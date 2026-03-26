@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { usePathname } from 'next/navigation'
+import { useClinicUser } from './clinic-context'
 
 interface Appointment {
   id: string
@@ -38,34 +38,23 @@ function useCountUp(target: number, duration = 1000) {
 }
 
 export default function DashboardPage() {
-  const [clinicId, setClinicId] = useState('')
+  const { clinicId } = useClinicUser()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({ today: 0, ai_booked: 0, patients: 0 })
   const [mounted, setMounted] = useState(false)
   const supabase = createClient()
-  const pathname = usePathname()
 
-  const todayCount = useCountUp(stats.today)
-  const aiCount = useCountUp(stats.ai_booked)
+  const todayCount  = useCountUp(stats.today)
+  const aiCount     = useCountUp(stats.ai_booked)
   const patientCount = useCountUp(stats.patients)
 
+  useEffect(() => { setMounted(true) }, [])
+
   useEffect(() => {
-    setMounted(true)
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+    if (!clinicId) return
 
-      // Resolve clinic from staff account — not env var
-      const { data: staff } = await supabase
-        .from('staff_accounts')
-        .select('clinic_id')
-        .eq('auth_id', user.id)
-        .single()
-
-      if (!staff) return
-      setClinicId(staff.clinic_id)
-
+    const load = async () => {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       const tomorrow = new Date(today)
@@ -74,18 +63,18 @@ export default function DashboardPage() {
       const [{ data: apts }, { data: allApts }, { count }] = await Promise.all([
         supabase.from('appointments')
           .select('*, patients(full_name, phone)')
-          .eq('clinic_id', staff.clinic_id)
+          .eq('clinic_id', clinicId)
           .eq('status', 'scheduled')
           .gte('start_time', today.toISOString())
           .lt('start_time', tomorrow.toISOString())
           .order('start_time'),
         supabase.from('appointments')
           .select('id, booked_via')
-          .eq('clinic_id', staff.clinic_id)
+          .eq('clinic_id', clinicId)
           .eq('status', 'scheduled'),
         supabase.from('patients')
           .select('*', { count: 'exact', head: true })
-          .eq('clinic_id', staff.clinic_id)
+          .eq('clinic_id', clinicId)
           .eq('is_active', true)
       ])
 
@@ -94,8 +83,9 @@ export default function DashboardPage() {
       setStats({ today: (apts || []).length, ai_booked: ai, patients: count || 0 })
       setLoading(false)
     }
-    init()
-  }, [])
+
+    load()
+  }, [clinicId])
 
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleTimeString('en-CA', {
