@@ -1,7 +1,3 @@
-const init = async () => {
-  console.log('PORTAL INIT - slug:', slug)
-  console.log('PORTAL INIT - user:', (await supabase.auth.getUser()).data.user?.email)
-  
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -31,6 +27,8 @@ export default function ClinicHomePage() {
 
   useEffect(() => {
     const init = async () => {
+    console.log('PORTAL INIT - slug:', slug)
+    console.log('PORTAL INIT - user:', (await supabase.auth.getUser()).data.user?.email)
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { data: account } = await supabase
