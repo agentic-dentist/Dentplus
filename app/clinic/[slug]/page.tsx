@@ -110,7 +110,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     if (!slug) return
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push(`/clinic/${slug}/login?type=patient`); return }
+      if (!user) { router.push('/'); return }
       setPatientAuthId(user.id)
 
       const { data: account } = await supabase
@@ -1091,3 +1091,4 @@ ${data.consents ? `${sec('7','Consents')}
     </>
   )
 }
+

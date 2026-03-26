@@ -40,7 +40,7 @@ export default function PortalPendingGate({
         .eq('clinic_id', settings.clinic_id)
         .maybeSingle()
 
-      if (!account) { router.push(`/clinic/${slug}/login?type=patient`); return }
+      if (!account) { router.push('/'); return }
       setStatus(account.is_approved ? 'approved' : 'pending')
     }
     check()
@@ -75,3 +75,4 @@ export default function PortalPendingGate({
 
   return <>{children}</>
 }
+

@@ -341,7 +341,7 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
     if (!slug) return
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push(`/clinic/${slug}/login?type=patient`); return }
+      if (!user) { router.push('/'); return }
       const { data: account } = await supabase.from('patient_accounts')
         .select('patient_id, clinic_id').eq('auth_id', user.id).single()
       if (!account) { router.push(`/clinic/${slug}`); return }
@@ -990,3 +990,4 @@ export default function IntakePage({ params }: { params: Promise<{ slug: string 
     </>
   )
 }
+

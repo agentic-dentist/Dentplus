@@ -65,7 +65,7 @@ export default function RegisterPage({
           <p style={{ color: '#94A3B8', fontSize: 13, lineHeight: 1.6, margin: '0 0 1.5rem' }}>
             This usually happens within one business day.
           </p>
-          <button onClick={() => router.push(`/clinic/${slug}/login?type=patient`)}
+          <button onClick={() => router.push('/')}
             style={{ background: '#0F172A', color: 'white', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
             Go to sign in
           </button>
@@ -120,7 +120,7 @@ export default function RegisterPage({
 
           <p style={{ textAlign: 'center', fontSize: 13, color: '#94A3B8', marginTop: 16, marginBottom: 0 }}>
             Already have an account?{' '}
-            <button onClick={() => router.push(`/clinic/${slug}/login?type=patient`)}
+            <button onClick={() => router.push('/')}
               style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
               Sign in
             </button>
@@ -134,3 +134,4 @@ export default function RegisterPage({
     </>
   )
 }
+
