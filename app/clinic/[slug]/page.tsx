@@ -162,7 +162,7 @@ export default function ClinicHomePage() {
               <strong style={{ color: '#475569' }}>{slug}.dentplus.ca/register</strong>
             </div>
 
-            <a href="/login?type=staff"} className="staff-link">
+            <a href="/login?type=staff" className="staff-link">
               Staff & clinic owner login →
             </a>
           </div>
