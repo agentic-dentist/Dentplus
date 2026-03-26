@@ -12,60 +12,46 @@ interface Clinic {
   primary_color: string | null
 }
 
-type Mode = 'splash' | 'login'
-
-export default function SplashPage() {
+export default function ClinicHomePage() {
   const params = useParams()
   const slug = params.slug as string
   const router = useRouter()
   const supabase = createClient()
 
   const [clinic, setClinic] = useState<Clinic | null>(null)
-  const [mode, setMode] = useState<Mode>('splash')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-
-  const [loginEmail, setLoginEmail] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        router.replace(`/clinic/${slug}/portal`)
-        return
-      }
+      if (user) { router.replace(`/clinic/${slug}/portal`); return }
+
       const res = await fetch(`/api/public-clinic?slug=${slug}`)
       if (!res.ok) { setLoading(false); return }
-      const clinicData = await res.json()
-      setClinic(clinicData)
+      const data = await res.json()
+      setClinic(data.clinic || data)
       setLoading(false)
     }
     init()
   }, [slug])
 
   const handleLogin = async () => {
-    if (!loginEmail.trim() || !loginPassword) {
-      setError('Please enter your email and password.')
-      return
+    if (!email.trim() || !password) { setError('Please enter your email and password.'); return }
+    setSubmitting(true); setError('')
+
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    if (authError) { setError('Invalid email or password.'); setSubmitting(false); return }
+
+    const role = authData.user?.user_metadata?.role
+    if (role === 'owner' || ['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
+      router.push('/dashboard')
+    } else {
+      router.push(`/clinic/${slug}/portal`)
     }
-    setSubmitting(true)
-    setError('')
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPassword,
-    })
-
-    if (signInError) {
-      setError('Invalid email or password.')
-      setSubmitting(false)
-      return
-    }
-
-    router.replace(`/clinic/${slug}/portal`)
-    setSubmitting(false)
   }
 
   const handleGoogle = async () => {
@@ -78,13 +64,13 @@ export default function SplashPage() {
   const color = clinic?.primary_color || '#0EA5E9'
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: 'DM Sans, sans-serif', color: '#94A3B8' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: "'DM Sans', sans-serif", color: '#94A3B8' }}>
       Loading...
     </div>
   )
 
   if (!clinic) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: 'DM Sans, sans-serif', color: '#94A3B8' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', fontFamily: "'DM Sans', sans-serif", color: '#94A3B8' }}>
       Clinic not found.
     </div>
   )
@@ -96,102 +82,90 @@ export default function SplashPage() {
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         body{font-family:'DM Sans',sans-serif;background:#F8FAFC;min-height:100vh}
         .page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px}
-        .card{background:white;border-radius:20px;border:1px solid #E2E8F0;padding:40px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.06)}
-        .back-btn{display:flex;align-items:center;gap:4px;font-size:13px;color:#94A3B8;background:none;border:none;cursor:pointer;padding:0 0 20px;font-family:'DM Sans',sans-serif;transition:color .15s}
-        .back-btn:hover{color:#64748B}
+        .card{background:white;border-radius:20px;border:1px solid #E2E8F0;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.06);overflow:hidden}
+        .clinic-header{padding:32px 40px 24px;text-align:center;border-bottom:1px solid #F1F5F9}
         .logo-wrap{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px}
-        .clinic-name{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0F172A;text-align:center;margin-bottom:4px}
-        .clinic-info{font-size:12px;color:#94A3B8;text-align:center;margin-bottom:2px}
-        .divider{height:1px;background:#F1F5F9;margin:24px 0}
-        .section-label{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#CBD5E1;text-align:center;margin-bottom:14px}
-        .form-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#0F172A;margin-bottom:4px}
-        .form-sub{font-size:13px;color:#94A3B8;margin-bottom:24px}
-        label{display:block;font-size:12px;font-weight:500;color:#64748B;margin-bottom:5px}
-        input{width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s;color:#0F172A}
-        input:focus{border-color:var(--color)}
+        .clinic-name{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0F172A;margin-bottom:4px}
+        .clinic-info{font-size:12px;color:#94A3B8;margin-bottom:2px}
+        .form-body{padding:28px 40px 32px}
+        .form-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:4px}
+        .form-sub{font-size:13px;color:#94A3B8;margin-bottom:20px}
         .field{margin-bottom:14px}
-        .btn{display:block;width:100%;padding:13px;border-radius:10px;font-size:15px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;text-align:center;transition:all .15s;border:none}
-        .btn-primary{color:white;margin-bottom:10px}
-        .btn-primary:hover{filter:brightness(.92)}
+        label{display:block;font-size:12px;font-weight:500;color:#64748B;margin-bottom:5px}
+        input{width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;color:#0F172A;outline:none;transition:border-color .15s}
+        input:focus{border-color:var(--c)}
+        .btn-primary{width:100%;padding:12px;border-radius:10px;color:white;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;margin-top:4px;transition:filter .15s}
+        .btn-primary:hover{filter:brightness(.9)}
         .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-secondary{background:#F8FAFC;color:#475569;border:1.5px solid #E2E8F0!important;margin-bottom:10px}
-        .btn-secondary:hover{background:#F1F5F9}
-        .btn-google{background:white;color:#374151;border:1.5px solid #E2E8F0!important;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px}
-        .btn-google:hover{background:#F9FAFB}
+        .divider{display:flex;align-items:center;gap:10px;margin:16px 0}
+        .divider-line{flex:1;height:1px;background:#F1F5F9}
+        .divider-text{font-size:11px;color:#CBD5E1}
+        .btn-google{width:100%;padding:10px;border-radius:10px;border:1.5px solid #E2E8F0;background:white;font-size:13px;font-family:'DM Sans',sans-serif;color:#475569;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}
+        .btn-google:hover{background:#F8FAFC}
         .error{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:13px;color:#DC2626;margin-bottom:14px}
+        .register-hint{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-top:16px;font-size:12px;color:#94A3B8;text-align:center;line-height:1.5}
         .staff-link{display:block;text-align:center;font-size:12px;color:#CBD5E1;text-decoration:none;margin-top:12px;transition:color .15s}
         .staff-link:hover{color:#94A3B8}
-        .footer{margin-top:24px;font-size:12px;color:#CBD5E1;text-align:center}
+        .footer{margin-top:20px;font-size:12px;color:#CBD5E1;text-align:center}
         .footer a{color:#94A3B8;text-decoration:none}
-        .register-hint{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-top:12px;text-align:center}
-        .register-hint-text{font-size:12px;color:#94A3B8;line-height:1.5}
       `}</style>
-      <style>{`:root { --color: ${color}; }`}</style>
+      <style>{`:root{--c:${color}}`}</style>
 
       <div className="page">
         <div className="card">
 
-          {/* ── SPLASH ── */}
-          {mode === 'splash' && (
-            <>
-              <div className="logo-wrap" style={{ background: `${color}18` }}>🦷</div>
-              <div className="clinic-name">{clinic.name}</div>
-              {clinic.address && <div className="clinic-info">{clinic.address}</div>}
-              {clinic.phone   && <div className="clinic-info">{clinic.phone}</div>}
-              <div className="divider" />
-              <div className="section-label">Patient access</div>
-              <button className="btn btn-primary" style={{ background: color }}
-                onClick={() => { setMode('login'); setError('') }}>
-                Sign in
-              </button>
-              <div className="register-hint">
-                <div className="register-hint-text">
-                  New patient? Ask our front desk to scan your QR code or visit<br />
-                  <strong style={{ color: '#475569' }}>{slug}.dentplus.ca/register</strong>
-                </div>
-              </div>
-              <a href={`/clinic/${slug}/login`} className="staff-link">
-                Staff & clinic owner login →
-              </a>
-            </>
-          )}
+          {/* Clinic branding */}
+          <div className="clinic-header">
+            <div className="logo-wrap" style={{ background: `${color}18` }}>🦷</div>
+            <div className="clinic-name">{clinic.name}</div>
+            {clinic.address && <div className="clinic-info">{clinic.address}</div>}
+            {clinic.phone && <div className="clinic-info">{clinic.phone}</div>}
+          </div>
 
-          {/* ── LOGIN ── */}
-          {mode === 'login' && (
-            <>
-              <button className="back-btn" onClick={() => { setMode('splash'); setError('') }}>← Back</button>
-              <div className="form-title">Welcome back</div>
-              <div className="form-sub">Sign in to your patient portal</div>
-              {error && <div className="error">{error}</div>}
-              <div className="field">
-                <label>Email address</label>
-                <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                  placeholder="you@example.com" autoComplete="email" />
-              </div>
-              <div className="field">
-                <label>Password</label>
-                <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
-                  placeholder="••••••••" autoComplete="current-password"
-                  onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-              </div>
-              <button className="btn btn-primary" style={{ background: color }}
-                onClick={handleLogin} disabled={submitting}>
-                {submitting ? 'Signing in...' : 'Sign in'}
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '12px 0' }}>
-                <div style={{ flex: 1, height: '1px', background: '#F1F5F9' }} />
-                <span style={{ fontSize: '12px', color: '#CBD5E1' }}>or</span>
-                <div style={{ flex: 1, height: '1px', background: '#F1F5F9' }} />
-              </div>
-              <button className="btn btn-google" onClick={handleGoogle}>
-                <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.8 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 16 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.5 29.3 4 24 4c-7.6 0-14.2 4.3-17.7 10.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.2-11.3-8H6.1C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.6l6.2 5.2C40.9 35.6 44 30.2 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>
-                Continue with Google
-              </button>
-              <a href={`/clinic/${slug}/login`} className="staff-link">
-                Staff & clinic owner login →
-              </a>
-            </>
-          )}
+          {/* Login form */}
+          <div className="form-body">
+            <div className="form-title">Patient sign in</div>
+            <div className="form-sub">Access your portal, appointments and records</div>
+
+            {error && <div className="error">{error}</div>}
+
+            <div className="field">
+              <label>Email address</label>
+              <input type="email" placeholder="you@example.com" value={email}
+                onChange={e => setEmail(e.target.value)} autoComplete="email" />
+            </div>
+            <div className="field">
+              <label>Password</label>
+              <input type="password" placeholder="••••••••" value={password}
+                onChange={e => setPassword(e.target.value)} autoComplete="current-password"
+                onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            </div>
+
+            <button className="btn-primary" style={{ background: color }}
+              onClick={handleLogin} disabled={submitting}>
+              {submitting ? 'Signing in...' : 'Sign in'}
+            </button>
+
+            <div className="divider">
+              <div className="divider-line" />
+              <div className="divider-text">or</div>
+              <div className="divider-line" />
+            </div>
+
+            <button className="btn-google" onClick={handleGoogle}>
+              <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Continue with Google
+            </button>
+
+            <div className="register-hint">
+              New patient? Ask our front desk to register you or visit<br />
+              <strong style={{ color: '#475569' }}>{slug}.dentplus.ca/register</strong>
+            </div>
+
+            <a href={`/clinic/${slug}/login?type=staff`} className="staff-link">
+              Staff & clinic owner login →
+            </a>
+          </div>
         </div>
 
         <div className="footer">Powered by <a href="https://dentplus.ca">DentPlus</a></div>
