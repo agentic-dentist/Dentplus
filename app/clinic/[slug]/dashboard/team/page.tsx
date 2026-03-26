@@ -121,6 +121,14 @@ export default function TeamPage() {
     const url = `${window.location.origin}/invite/${data.token}`
     setInviteLink(url)
     setInvites(prev => [data, ...prev])
+
+    // Send invite email via API
+    await fetch('/api/invite/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteId: data.id, clinicId }),
+    })
+
     setInviteEmail(''); setInviteName('')
     setSent(true); setSending(false)
     setTimeout(() => setSent(false), 3000)
@@ -315,7 +323,7 @@ export default function TeamPage() {
               <div className="link-url">{inviteLink}</div>
               <button className="copy-btn" onClick={copyLink}>Copy link</button>
             </div>
-            <div className="link-note">Expires in 7 days · Email sending coming in Phase 2</div>
+            <div className="link-note">Expires in 7 days · Invite email sent</div>
           </div>
         )}
       </div>
