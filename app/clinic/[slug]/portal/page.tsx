@@ -110,7 +110,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
     if (!slug) return
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/'); return }
+      if (!user) { router.push(`/clinic/${slug}/login?type=patient`); return }
       setPatientAuthId(user.id)
 
       const { data: account } = await supabase
@@ -118,7 +118,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .select('patient_id, clinic_id, is_approved')
         .eq('auth_id', user.id).maybeSingle()
 
-      if (!account) { router.push('/'); return }
+      if (!account) { router.push(`/clinic/${slug}`); return }
       setIsApproved(account.is_approved ?? true)
       if (!account.is_approved) { setLoading(false); return }
       setClinicId(account.clinic_id)
@@ -138,7 +138,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .select('full_name, email, phone_primary, insurance_provider, intake_status')
         .eq('id', account.patient_id).single()
 
-      if (!patient) { router.push('/'); return }
+      if (!patient) { router.push(`/clinic/${slug}`); return }
       setPatientInfo(patient)
 
       const now = new Date().toISOString()
