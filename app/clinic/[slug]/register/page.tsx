@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage({
   params
@@ -18,7 +17,6 @@ export default function RegisterPage({
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
     params.then(async p => {
@@ -39,23 +37,10 @@ export default function RegisterPage({
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
     setLoading(true); setError('')
 
-    // Create Supabase auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.toLowerCase(),
-      password,
-      options: { data: { full_name: fullName, role: 'patient' } }
-    })
-
-    if (authError || !authData.user) {
-      setError(authError?.message || 'Registration failed.')
-      setLoading(false); return
-    }
-
-    // Register patient via API
     const res = await fetch('/api/patient/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug, fullName, email: email.toLowerCase(), authId: authData.user.id })
+      body: JSON.stringify({ slug, fullName, email: email.toLowerCase(), password }),
     })
     const data = await res.json()
 
@@ -73,13 +58,17 @@ export default function RegisterPage({
       <div style={{ minHeight: '100vh', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: "'DM Sans', sans-serif" }}>
         <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', padding: 40, maxWidth: 400, width: '100%', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', fontSize: 24 }}>✓</div>
-          <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 0.75rem' }}>Check your inbox</h2>
+          <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, color: '#0F172A', margin: '0 0 0.75rem' }}>Account created!</h2>
           <p style={{ color: '#64748B', fontSize: 14, lineHeight: 1.6, margin: '0 0 1rem' }}>
-            We sent a confirmation link to <strong>{email}</strong>.
+            Your account has been created. Once a staff member approves it, you'll receive an email and can sign in to your portal.
           </p>
-          <p style={{ color: '#94A3B8', fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-            Once confirmed, your account will be reviewed by {clinicName || 'the clinic'} before you can access your portal.
+          <p style={{ color: '#94A3B8', fontSize: 13, lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+            This usually happens within one business day.
           </p>
+          <button onClick={() => router.push(`/clinic/${slug}/login?type=patient`)}
+            style={{ background: '#0F172A', color: 'white', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
+            Go to sign in
+          </button>
         </div>
       </div>
     )

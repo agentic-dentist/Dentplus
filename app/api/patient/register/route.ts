@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+
+const adminClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 async function sendWelcomeEmail(email: string, fullName: string, clinicName: string) {
   if (!process.env.RESEND_API_KEY) return
@@ -35,13 +41,14 @@ async function sendWelcomeEmail(email: string, fullName: string, clinicName: str
 
 export async function POST(request: Request) {
   try {
-    const { slug, fullName, email, authId } = await request.json()
-    if (!slug || !fullName || !email || !authId) {
+    const { slug, fullName, email, authId: existingAuthId, password } = await request.json()
+    if (!slug || !fullName || !email) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
     const db = createServerClient()
 
+    // Get clinic by slug
     const { data: settings } = await db
       .from('clinic_settings')
       .select('clinic_id, clinics(name)')
@@ -55,6 +62,25 @@ export async function POST(request: Request) {
     const clinicId = settings.clinic_id
     const clinics = settings.clinics
     const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || 'your clinic'
+
+    // Determine authId — passed in from Google OAuth, or create new user server-side
+    let authId = existingAuthId
+    if (!authId && password) {
+      const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+        email: email.toLowerCase(),
+        password,
+        email_confirm: true, // confirm immediately — staff approval is the security gate
+        user_metadata: { full_name: fullName, role: 'patient' },
+      })
+      if (authError || !authData.user) {
+        if (authError?.message?.includes('already registered'))
+          return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 })
+        return NextResponse.json({ error: `Could not create account: ${authError?.message}` }, { status: 500 })
+      }
+      authId = authData.user.id
+    }
+
+    if (!authId) return NextResponse.json({ error: 'Missing auth ID' }, { status: 400 })
 
     // Check if patient_account already exists
     const { data: existing } = await db
@@ -95,6 +121,7 @@ export async function POST(request: Request) {
       if (newPatient) patientId = newPatient.id
     }
 
+    // Create patient account — pending approval
     const { error: accountError } = await db.from('patient_accounts').insert({
       auth_id: authId,
       clinic_id: clinicId,
