@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `DB error: ${inviteError.message}` }, { status: 500 })
     }
     if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
-    if (invite.status !== 'pending') return NextResponse.json({ error: 'Invite already used' }, { status: 400 })
+    if (!['pending', 'sent'].includes(invite.status)) return NextResponse.json({ error: 'Invite already used' }, { status: 400 })
     if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: 'Invite expired' }, { status: 400 })
 
     // Fetch slug separately
