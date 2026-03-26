@@ -11,19 +11,15 @@ export default function LoginPage({
 }) {
   const [slug, setSlug] = useState('')
   const [type, setType] = useState<'patient' | 'staff'>('patient')
-  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
     params.then(p => {
-      // Read real slug from subdomain hostname, not rewritten path
       const hostname = window.location.hostname
       const realSlug = hostname.includes('.dentplus.ca')
         ? hostname.replace('.dentplus.ca', '')
@@ -31,7 +27,6 @@ export default function LoginPage({
       setSlug(realSlug)
       const t = searchParams.get('type') as 'patient' | 'staff'
       if (t) setType(t)
-      if (t === 'staff') setMode('login')
     })
   }, [params, searchParams])
 
@@ -39,50 +34,27 @@ export default function LoginPage({
 
   const handleSubmit = async () => {
     if (!email || !password) { setError('Please fill in all fields.'); return }
-    if (mode === 'register' && !fullName) { setError('Please enter your name.'); return }
-
     setLoading(true)
     setError('')
 
-    if (mode === 'login') {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-      if (authError) { setError('Invalid email or password.'); setLoading(false); return }
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    if (authError) { setError('Invalid email or password.'); setLoading(false); return }
 
-      const user = authData.user
-      const role = user?.user_metadata?.role
+    const user = authData.user
+    const role = user?.user_metadata?.role
 
-      // Owner → dashboard on current subdomain
-      if (role === 'owner') {
-        router.push('/dashboard')
-        return
-      }
-
-      // Staff → dashboard on current subdomain
-      if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
-        router.push('/dashboard')
-        return
-      }
-
-      // Patient → portal
-      const redirect = searchParams.get('redirect') || `/clinic/${slug}/portal`
-      router.push(redirect)
+    if (role === 'owner') {
+      router.push('/dashboard')
       return
     }
 
-    // Register — patient only
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password })
-    if (authError || !authData.user) { setError(authError?.message || 'Registration failed.'); setLoading(false); return }
+    if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
+      router.push('/dashboard')
+      return
+    }
 
-    const res = await fetch(`/api/patient/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug, fullName, email, authId: authData.user.id })
-    })
-    const data = await res.json()
-    if (!res.ok) { setError(data.error || 'Account creation failed.'); setLoading(false); return }
-
-    setSuccess('Account created! Check your email to verify, then log in.')
-    setLoading(false)
+    // Patient
+    router.push(`/clinic/${slug}/portal`)
   }
 
   const handleGoogle = async () => {
@@ -108,9 +80,6 @@ export default function LoginPage({
         .back:hover { color: #64748B; }
         .title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
         .subtitle { font-size: 13px; color: #94A3B8; margin-bottom: 28px; }
-        .tabs { display: flex; background: #F8FAFC; border-radius: 10px; padding: 3px; margin-bottom: 24px; gap: 3px; }
-        .tab { flex: 1; padding: 8px; border-radius: 8px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; border: none; background: none; color: #94A3B8; transition: all 0.15s; }
-        .tab.active { background: white; color: #0F172A; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .field { margin-bottom: 14px; }
         label { display: block; font-size: 12px; font-weight: 500; color: #64748B; margin-bottom: 5px; letter-spacing: 0.3px; }
         input { width: 100%; padding: 10px 14px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: #0F172A; outline: none; transition: border-color 0.15s; }
@@ -124,7 +93,6 @@ export default function LoginPage({
         .btn-google { width: 100%; padding: 10px; border-radius: 10px; border: 1.5px solid #E2E8F0; background: white; font-size: 14px; font-family: 'DM Sans', sans-serif; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
         .btn-google:hover { background: #F8FAFC; }
         .error { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #DC2626; margin-bottom: 14px; }
-        .success { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #16A34A; margin-bottom: 14px; }
       `}</style>
 
       <div className="page">
@@ -134,30 +102,13 @@ export default function LoginPage({
           </button>
 
           <div className="title">
-            {isPatient ? (mode === 'login' ? 'Welcome back' : 'Create account') : 'Staff login'}
+            {isPatient ? 'Welcome back' : 'Staff login'}
           </div>
           <div className="subtitle">
-            {isPatient
-              ? (mode === 'login' ? 'Sign in to your patient portal' : 'Join your dental clinic portal')
-              : 'Access the clinic dashboard'}
+            {isPatient ? 'Sign in to your patient portal' : 'Access the clinic dashboard'}
           </div>
 
-          {isPatient && (
-            <div className="tabs">
-              <button className={`tab ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>Sign in</button>
-              <button className={`tab ${mode === 'register' ? 'active' : ''}`} onClick={() => setMode('register')}>Register</button>
-            </div>
-          )}
-
           {error && <div className="error">{error}</div>}
-          {success && <div className="success">{success}</div>}
-
-          {mode === 'register' && (
-            <div className="field">
-              <label>Full name</label>
-              <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Marie Tremblay" />
-            </div>
-          )}
 
           <div className="field">
             <label>Email address</label>
@@ -166,11 +117,12 @@ export default function LoginPage({
 
           <div className="field">
             <label>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
           </div>
 
           <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
-            {loading ? 'Please wait...' : (mode === 'login' ? 'Sign in' : 'Create account')}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
 
           {isPatient && (
