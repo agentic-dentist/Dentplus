@@ -53,8 +53,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
     }
 
-    const clinicId = settings.clinic_id
-    const clinicName = (settings.clinics as { name: string } | null)?.name || 'your clinic'
+    const clinics = settings.clinics
+    const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || 'your clinic'
 
     // Check if patient_account already exists
     const { data: existing } = await db
@@ -146,7 +146,8 @@ export async function PATCH(request: Request) {
       .eq('id', patientAccountId)
 
     // Send welcome email
-    const clinicName = (account.clinics as { name: string } | null)?.name || 'your clinic'
+    const clinics = account.clinics
+    const clinicName = (Array.isArray(clinics) ? clinics[0] : clinics as { name: string } | null)?.name || 'your clinic'
     await sendWelcomeEmail(account.email, account.full_name, clinicName)
 
     return NextResponse.json({ success: true })
