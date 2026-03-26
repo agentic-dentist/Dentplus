@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
         const { data: pendingInvites } = await supabase.from('staff_invites').select('id, email, full_name, role, token').eq('clinic_id', clinicId).eq('status', 'pending')
 
         for (const invite of pendingInvites || []) {
-          const inviteLink = `${process.env.APP_URL}/invite/accept?token=${invite.token}`
+          const inviteLink = `${process.env.APP_URL}/invite/${invite.token}`
 
           if (process.env.RESEND_API_KEY) {
             await fetch('https://api.resend.com/emails', {

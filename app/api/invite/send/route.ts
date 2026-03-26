@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       .single()
 
     const clinicName = clinic?.name || 'your clinic'
-    const inviteLink = `${process.env.APP_URL}/invite/accept?token=${invite.token}`
+    const inviteLink = `${process.env.APP_URL}/invite/${invite.token}`
 
     if (!process.env.RESEND_API_KEY) {
       console.log(`[INVITE] ${invite.email}: ${inviteLink}`)
