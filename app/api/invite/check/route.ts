@@ -3,8 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function GET(request: Request) {
   try {
-    const { token, password } = await request.json()
-    if (!token || !password) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    const { searchParams } = new URL(request.url)
+    const token = searchParams.get('token')
+    if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
 
     const db = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
