@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { usePathname } from 'next/navigation'
+import { useClinicUser } from '../clinic-context'
 
 interface Patient {
   id: string
@@ -48,7 +48,9 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 }
 
 export default function PatientsPage() {
-  const [clinicId, setClinicId] = useState('')
+  // Get clinic context instead of querying staff_accounts
+  const { clinicId, staffId, staffName, staffRole } = useClinicUser()
+
   const [patients, setPatients] = useState<Patient[]>([])
   const [filtered, setFiltered] = useState<Patient[]>([])
   const [search, setSearch] = useState('')
@@ -67,9 +69,6 @@ export default function PatientsPage() {
   const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
   const [loadingNotes, setLoadingNotes] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
-  const [staffId, setStaffId] = useState('')
-  const [staffName, setStaffName] = useState('')
-  const [staffRole, setStaffRole] = useState('')
   const [newNote, setNewNote] = useState({
     chiefComplaint: '', findings: '', treatmentDone: '', nextSteps: '', isPrivate: false
   })
@@ -77,7 +76,6 @@ export default function PatientsPage() {
   const [noteSaved, setNoteSaved] = useState(false)
 
   const supabase = createClient()
-  const pathname = usePathname()
 
   const loadTreatmentNotes = async (patientId: string) => {
     setLoadingNotes(true)
@@ -118,21 +116,14 @@ export default function PatientsPage() {
     setSavingNote(false)
   }
 
+  // Load patients once clinicId is available from context
   useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      const { data: staff } = await supabase.from('staff_accounts')
-        .select('id, clinic_id, full_name, role').eq('auth_id', user.id).single()
-      if (!staff) return
-      setClinicId(staff.clinic_id)
-      setStaffId(staff.id)
-      setStaffName(staff.full_name)
-      setStaffRole(staff.role)
+    if (!clinicId) return
 
+    const load = async () => {
       const { data } = await supabase.from('patients')
         .select('id, full_name, email, phone_primary, phone_secondary, insurance_provider, intake_status, created_at, date_of_birth, address_line1, city, postal_code, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, preferred_language, is_minor, guardian_name, guardian_phone, intake_rejection_reason')
-        .eq('clinic_id', staff.clinic_id)
+        .eq('clinic_id', clinicId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
@@ -140,457 +131,242 @@ export default function PatientsPage() {
       setFiltered(data || [])
       setLoading(false)
 
-      // Load clinical staff for assignment dropdown
       const { data: staffData } = await supabase
         .from('staff_accounts')
         .select('id, full_name, role')
-        .eq('clinic_id', staff.clinic_id)
+        .eq('clinic_id', clinicId)
         .eq('is_active', true)
         .in('role', ['dentist', 'hygienist', 'owner'])
         .order('role')
       setDentists(staffData || [])
     }
-    init()
-  }, [])
+
+    load()
+  }, [clinicId])
 
   useEffect(() => {
     const q = search.toLowerCase()
     setFiltered(patients.filter(p =>
       p.full_name.toLowerCase().includes(q) ||
-      p.email.toLowerCase().includes(q) ||
-      (p.phone_primary || '').includes(q)
+      (p.email || '').toLowerCase().includes(q)
     ))
   }, [search, patients])
 
-  const loadDetail = async (patient: Patient) => {
-    setSelected(patient)
+  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+
+  const selectPatient = async (p: Patient) => {
+    setSelected(p)
     setDetail(null)
     setLoadingDetail(true)
-    setShowReject(false)
-    setRejectionReason('')
+    setAssignedDentistId('')
+    setAssignedHygienistId('')
+    setTreatmentNotes([])
     setShowAddNote(false)
-    setAssignedDentistId((patient as any).assigned_dentist_id || '')
-    setAssignedHygienistId((patient as any).assigned_hygienist_id || '')
-    loadTreatmentNotes(patient.id)
+    setShowReject(false)
 
-    // Get latest record for each table using order + limit
-    const [{ data: medicalRows }, { data: dentalRow }, { data: insurance }, { data: consents }] = await Promise.all([
-      supabase.from('patient_medical').select('*')
-        .eq('patient_id', patient.id)
-        .order('updated_at', { ascending: false })
-        .limit(1),
-      supabase.from('patient_dental').select('*')
-        .eq('patient_id', patient.id)
-        .order('updated_at', { ascending: false })
-        .limit(1),
-      supabase.from('patient_insurance').select('*')
-        .eq('patient_id', patient.id)
-        .order('created_at'),
-      supabase.from('patient_consents').select('*')
-        .eq('patient_id', patient.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
+    const [med, dental, ins, consents, patientFull] = await Promise.all([
+      supabase.from('patient_medical').select('*').eq('patient_id', p.id).eq('clinic_id', clinicId).maybeSingle(),
+      supabase.from('patient_dental').select('*').eq('patient_id', p.id).eq('clinic_id', clinicId).maybeSingle(),
+      supabase.from('patient_insurance').select('*').eq('patient_id', p.id).eq('clinic_id', clinicId).order('coverage_order'),
+      supabase.from('patient_consents').select('*').eq('patient_id', p.id).eq('clinic_id', clinicId).maybeSingle(),
+      supabase.from('patients').select('assigned_dentist_id, assigned_hygienist_id').eq('id', p.id).single(),
     ])
 
-    // Pick the most recent medical record that has actual data
-    const medical = medicalRows?.find(m =>
-      m.takes_medications || m.has_allergies ||
-      Object.values(m.conditions || {}).some(v => v) ||
-      m.physician_name
-    ) || medicalRows?.[0] || null
-
-    const dental = dentalRow?.[0] || null
-    const consent = Array.isArray(consents) ? consents[0] : consents
-
-    setDetail({ medical, dental, insurance, consents: consent })
+    setDetail({
+      medical: med.data,
+      dental: dental.data,
+      insurance: ins.data,
+      consents: consents.data,
+    })
+    setAssignedDentistId(patientFull.data?.assigned_dentist_id || '')
+    setAssignedHygienistId(patientFull.data?.assigned_hygienist_id || '')
     setLoadingDetail(false)
+    await loadTreatmentNotes(p.id)
   }
 
-  const approve = async () => {
+  const updateIntakeStatus = async (status: string) => {
     if (!selected) return
     setProcessing(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data: staff } = await supabase.from('staff_accounts').select('id').eq('auth_id', user!.id).single()
-    await supabase.from('patients').update({
-      intake_status: 'approved',
-      intake_reviewed_at: new Date().toISOString(),
-      intake_reviewed_by: staff?.id,
-      assigned_dentist_id: assignedDentistId || null,
-      assigned_hygienist_id: assignedHygienistId || null
-    }).eq('id', selected.id)
-    setPatients(prev => prev.map(p => p.id === selected.id ? { ...p, intake_status: 'approved' } : p))
-    setSelected(prev => prev ? { ...prev, intake_status: 'approved' } : null)
+    await supabase.from('patients').update({ intake_status: status, intake_reviewed_at: new Date().toISOString() }).eq('id', selected.id)
+    setPatients(prev => prev.map(p => p.id === selected.id ? { ...p, intake_status: status } : p))
+    setSelected(prev => prev ? { ...prev, intake_status: status } : null)
+    setShowReject(false)
+    setRejectionReason('')
     setProcessing(false)
   }
 
   const saveAssignment = async () => {
     if (!selected) return
     setSavingAssignment(true)
-    setAssignmentSaved(false)
     await supabase.from('patients').update({
       assigned_dentist_id: assignedDentistId || null,
-      assigned_hygienist_id: assignedHygienistId || null
+      assigned_hygienist_id: assignedHygienistId || null,
     }).eq('id', selected.id)
-    setPatients(prev => prev.map(p => p.id === selected!.id
-      ? { ...p, assigned_dentist_id: assignedDentistId, assigned_hygienist_id: assignedHygienistId } as any
-      : p
-    ))
     setSavingAssignment(false)
     setAssignmentSaved(true)
-    setTimeout(() => setAssignmentSaved(false), 2500)
+    setTimeout(() => setAssignmentSaved(false), 3000)
   }
-
-  const reject = async () => {
-    if (!selected) return
-    setProcessing(true)
-    await supabase.from('patients').update({
-      intake_status: 'rejected',
-      intake_reviewed_at: new Date().toISOString(),
-      intake_rejection_reason: rejectionReason || null
-    }).eq('id', selected.id)
-    setPatients(prev => prev.map(p => p.id === selected.id ? { ...p, intake_status: 'rejected', intake_rejection_reason: rejectionReason } : p))
-    setSelected(prev => prev ? { ...prev, intake_status: 'rejected', intake_rejection_reason: rejectionReason } : null)
-    setShowReject(false)
-    setProcessing(false)
-  }
-
-  const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-  const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
-
-  const pendingCount = patients.filter(p => p.intake_status === 'pending_review').length
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&display=swap');
-        .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-        .page-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#0F172A}
-        .header-right{display:flex;align-items:center;gap:12px}
-        .pending-badge{background:#FEF3C7;color:#D97706;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
-        .search{padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;width:260px;transition:border-color .15s}
-        .search:focus{border-color:#0EA5E9}
-        .table-wrap{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden}
-        table{width:100%;border-collapse:collapse}
-        .th{padding:11px 16px;text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;border-bottom:1px solid #F1F5F9;background:#FAFBFC}
-        .tr{border-bottom:1px solid #F8FAFC;cursor:pointer;transition:background .1s}
-        .tr:last-child{border-bottom:none}
-        .tr:hover{background:#F8FAFC}
-        .td{padding:13px 16px;font-size:14px;color:#0F172A}
-        .patient-cell{display:flex;align-items:center;gap:10px}
-        .avatar{width:34px;height:34px;border-radius:50%;background:#E0F2FE;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#0284C7;flex-shrink:0}
-        .pt-name{font-weight:500;color:#0F172A}
-        .pt-email{font-size:12px;color:#94A3B8;margin-top:1px}
-        .status-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
-        .empty{text-align:center;padding:48px;color:#CBD5E1;font-size:14px}
-
-        /* Panel */
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:100}
-        .panel{position:fixed;top:0;right:0;width:540px;height:100vh;background:white;z-index:101;overflow-y:auto;box-shadow:-4px 0 32px rgba(0,0,0,0.12);display:flex;flex-direction:column}
-        .panel-header{padding:20px 24px;border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:white;z-index:10}
-        .panel-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#0F172A}
-        .panel-email{font-size:13px;color:#64748B;margin-top:2px}
-        .close-btn{width:32px;height:32px;border-radius:8px;border:1px solid #E2E8F0;background:white;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-        .close-btn:hover{background:#F8FAFC}
-        .panel-body{padding:20px 24px;flex:1}
-        .action-row{display:flex;gap:10px;margin-bottom:20px}
-        .btn-approve{padding:9px 20px;background:#10B981;color:white;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s}
-        .btn-approve:hover{background:#059669}
-        .btn-approve:disabled{opacity:.5;cursor:not-allowed}
-        .btn-reject{padding:9px 20px;background:#FEF2F2;color:#F87171;border-radius:8px;font-size:13px;font-weight:500;border:1.5px solid #FECACA;cursor:pointer;font-family:'DM Sans',sans-serif}
-        .reject-box{background:#FFF;border:1px solid #FECACA;border-radius:8px;padding:14px;margin-bottom:16px}
-        .assign-box{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:14px;margin-bottom:16px}
-        .assign-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0}
-        .assign-label{font-size:11px;font-weight:600;color:#64748B;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
-        .assign-select{width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;background:white;color:#0F172A;cursor:pointer}
-        .assign-select:focus{border-color:#0EA5E9}
-        .assign-save{margin-top:10px;padding:7px 16px;background:#0F172A;color:white;border:none;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s}
-        .assign-save:hover{background:#1E293B}
-        .assign-save:disabled{opacity:.5;cursor:not-allowed}
-        .assign-saved{margin-top:10px;font-size:12px;color:#059669;font-weight:500}
-        textarea{width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:none}
-        .reject-reason-shown{background:#FEF2F2;border-radius:8px;padding:10px 14px;font-size:13px;color:#DC2626;margin-bottom:16px}
-
-        /* Sections */
-        .section{margin-bottom:22px}
-        .section-label{font-size:10.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#94A3B8;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #F1F5F9}
-        .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .info-key{font-size:11px;color:#94A3B8;font-weight:500;margin-bottom:2px}
-        .info-val{font-size:13px;color:#0F172A}
-        .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;margin:2px}
-        .tag-allergy{background:#FEF2F2;color:#F87171}
-        .tag-med{background:#EFF6FF;color:#0EA5E9}
-        .tag-cond{background:#F0FDF4;color:#059669}
-        .consent-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;padding:5px 0}
-        .check{color:#10B981;font-weight:700;font-size:14px}
-        .cross{color:#F87171;font-weight:700;font-size:14px}
-        .sig-box{background:#F8FAFC;border-radius:8px;padding:12px;margin-top:8px}
-        .sig-label{font-size:11px;color:#94A3B8;margin-bottom:4px}
-        .sig-text{font-size:16px;font-style:italic;color:#0F172A}
-        .emergency-banner{background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;margin-bottom:16px}
-        .emergency-title{font-size:11px;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-        .no-data{text-align:center;padding:24px;color:#94A3B8;font-size:13px}
-        .btn-sm{padding:7px 14px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;border:none}
-        .btn-cancel-sm{background:#F8FAFC;color:#475569;border:1.5px solid #E2E8F0!important}
-        .btn-confirm-reject{background:#F87171;color:white}
-        .loading-panel{text-align:center;padding:48px;color:#CBD5E1;font-size:13px}
-        .notes-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-        .add-note-btn{padding:5px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;font-weight:500;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
-        .add-note-btn:hover{border-color:#0EA5E9;color:#0EA5E9}
-        .note-card{background:#F8FAFC;border-radius:9px;padding:14px;margin-bottom:10px;border:1px solid #F1F5F9}
-        .note-card:last-child{margin-bottom:0}
-        .note-meta{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-        .note-date{font-size:12px;font-weight:600;color:#0F172A;font-family:'JetBrains Mono',monospace}
-        .note-author{font-size:11px;color:#94A3B8}
-        .private-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:#FEF3C7;color:#D97706}
-        .note-field{margin-bottom:8px}
-        .note-field:last-child{margin-bottom:0}
-        .note-field-label{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
-        .note-field-val{font-size:13px;color:#0F172A;line-height:1.5}
-        .note-form{background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:10px;padding:16px;margin-bottom:12px}
-        .note-form-title{font-size:13px;font-weight:600;color:#0F172A;margin-bottom:12px}
-        .note-textarea{width:100%;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;outline:none;min-height:60px;transition:border-color .15s}
-        .note-textarea:focus{border-color:#0EA5E9}
-        .note-label{display:block;font-size:11px;font-weight:500;color:#64748B;margin-bottom:4px;margin-top:10px}
-        .note-label:first-child{margin-top:0}
-        .note-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
-        .note-save-btn{padding:8px 18px;background:#0F172A;color:white;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:background .15s}
-        .note-save-btn:hover{background:#1E293B}
-        .note-save-btn:disabled{opacity:.6;cursor:not-allowed}
-        .note-save-btn.saved{background:#10B981}
-        .note-cancel-btn{padding:8px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif}
-        .private-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#64748B;cursor:pointer;margin-left:auto}
+        .patients-layout { display: flex; gap: 24px; height: calc(100vh - 72px); }
+        .patients-list { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; }
+        .search-bar { width: 100%; padding: 10px 14px; border: 1.5px solid #E2E8F0; border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: #0F172A; outline: none; margin-bottom: 14px; box-sizing: border-box; }
+        .search-bar:focus { border-color: #0EA5E9; }
+        .patient-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .patient-card { background: white; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: all 0.15s; }
+        .patient-card:hover { border-color: #CBD5E1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .patient-card.active { border-color: #0EA5E9; background: #F0F9FF; }
+        .patient-name { font-size: 14px; font-weight: 600; color: #0F172A; margin-bottom: 3px; }
+        .patient-meta { font-size: 12px; color: #94A3B8; }
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; margin-top: 6px; }
+        .detail-panel { flex: 1; overflow-y: auto; background: white; border-radius: 16px; border: 1.5px solid #E2E8F0; padding: 28px; }
+        .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: #CBD5E1; font-size: 14px; }
+        .patient-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #F1F5F9; }
+        .patient-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
+        .patient-subtitle { font-size: 13px; color: #94A3B8; }
+        .action-btns { display: flex; gap: 8px; }
+        .btn-approve { padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .btn-reject { padding: 8px 16px; background: #FEE2E2; color: #DC2626; border: none; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .section { margin-bottom: 24px; }
+        .section-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #94A3B8; margin-bottom: 12px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-key { font-size: 11px; color: #94A3B8; margin-bottom: 2px; }
+        .info-val { font-size: 13px; color: #0F172A; font-weight: 500; }
+        .tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; margin: 3px 3px 0 0; }
+        .tag-allergy { background: #FEE2E2; color: #DC2626; }
+        .tag-med { background: #EFF6FF; color: #1D4ED8; }
+        .tag-cond { background: #F0FDF4; color: #059669; }
+        .consent-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; margin-bottom: 6px; }
+        .check { color: #059669; font-weight: 700; }
+        .cross { color: #DC2626; font-weight: 700; }
+        .sig-box { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-top: 8px; }
+        .sig-label { font-size: 11px; color: #94A3B8; margin-bottom: 4px; }
+        .sig-text { font-size: 14px; color: #0F172A; font-style: italic; }
+        .no-data { font-size: 13px; color: #CBD5E1; font-style: italic; }
+        .reject-box { margin-top: 8px; }
+        .reject-input { width: 100%; padding: 8px 12px; border: 1.5px solid #FECACA; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; margin-bottom: 8px; outline: none; box-sizing: border-box; }
+        .assign-row { display: flex; gap: 12px; align-items: flex-end; }
+        .assign-select { flex: 1; padding: 8px 12px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; outline: none; }
+        .btn-save-assign { padding: 8px 16px; background: #0F172A; color: white; border: none; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .notes-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .add-note-btn { padding: 6px 12px; background: #EFF6FF; color: #1D4ED8; border: none; border-radius: 6px; font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .note-form { background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+        .note-form-title { font-size: 13px; font-weight: 600; color: #0F172A; margin-bottom: 12px; }
+        .note-label { display: block; font-size: 11px; font-weight: 600; color: #64748B; margin-bottom: 4px; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .note-textarea { width: 100%; padding: 8px 12px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; resize: vertical; outline: none; box-sizing: border-box; }
+        .note-textarea:focus { border-color: #0EA5E9; }
+        .note-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+        .note-save-btn { padding: 8px 16px; background: #0F172A; color: white; border: none; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .note-save-btn.saved { background: #059669; }
+        .note-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .note-cancel-btn { padding: 8px 12px; background: none; color: #94A3B8; border: none; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+        .private-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748B; cursor: pointer; margin-left: auto; }
+        .note-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+        .note-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .note-date { font-size: 12px; font-weight: 600; color: #0F172A; }
+        .note-author { font-size: 12px; color: #94A3B8; }
+        .private-badge { padding: 2px 8px; background: #FEF3C7; color: #D97706; border-radius: 10px; font-size: 10px; font-weight: 600; }
+        .note-field { margin-bottom: 8px; }
+        .note-field-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #94A3B8; margin-bottom: 2px; }
+        .note-field-val { font-size: 13px; color: #334155; line-height: 1.5; }
       `}</style>
 
-      <div className="header">
-        <div>
-          <div className="page-title">Patients</div>
-          {pendingCount > 0 && (
-            <span className="pending-badge" style={{ display: 'inline-block', marginTop: '4px' }}>
-              {pendingCount} pending review
-            </span>
-          )}
-        </div>
-        <div className="header-right">
-          <input className="search" placeholder="Search patients..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-      </div>
+      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 22, fontWeight: 700, color: '#0F172A', marginBottom: 20 }}>Patients</h1>
 
-      <div className="table-wrap">
-        {loading ? <div className="empty">Loading...</div> : filtered.length === 0 ? (
-          <div className="empty">No patients found.</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th className="th">Patient</th>
-                <th className="th">Phone</th>
-                <th className="th">Insurance</th>
-                <th className="th">Intake</th>
-                <th className="th">Added</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => {
-                const s = STATUS_STYLE[p.intake_status] || STATUS_STYLE.incomplete
-                return (
-                  <tr key={p.id} className="tr" onClick={() => loadDetail(p)}>
-                    <td className="td">
-                      <div className="patient-cell">
-                        <div className="avatar">{initials(p.full_name)}</div>
-                        <div>
-                          <div className="pt-name">{p.full_name}</div>
-                          <div className="pt-email">{p.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="td" style={{ color: '#64748B' }}>{p.phone_primary || '—'}</td>
-                    <td className="td" style={{ color: '#64748B' }}>{p.insurance_provider || '—'}</td>
-                    <td className="td">
-                      <span className="status-badge" style={{ background: s.bg, color: s.color }}>{s.label}</span>
-                    </td>
-                    <td className="td" style={{ color: '#94A3B8', fontSize: '12px' }}>{formatDate(p.created_at)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <div className="patients-layout">
+        <div className="patients-list">
+          <input className="search-bar" placeholder="Search patients..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="patient-scroll">
+            {loading ? (
+              <div style={{ fontSize: 13, color: '#CBD5E1', padding: 12 }}>Loading...</div>
+            ) : filtered.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#CBD5E1', padding: 12 }}>No patients found.</div>
+            ) : filtered.map(p => {
+              const s = STATUS_STYLE[p.intake_status] || STATUS_STYLE.incomplete
+              return (
+                <div key={p.id} className={`patient-card ${selected?.id === p.id ? 'active' : ''}`} onClick={() => selectPatient(p)}>
+                  <div className="patient-name">{p.full_name}</div>
+                  <div className="patient-meta">{p.email}</div>
+                  <div className="status-pill" style={{ background: s.bg, color: s.color }}>{s.label}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
 
-      {selected && (
-        <>
-          <div className="overlay" onClick={() => setSelected(null)} />
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                  <div className="avatar" style={{ width: '40px', height: '40px', fontSize: '14px' }}>{initials(selected.full_name)}</div>
-                  <div>
-                    <div className="panel-name">{selected.full_name}</div>
-                    <div className="panel-email">{selected.email}</div>
+        <div className="detail-panel">
+          {!selected ? (
+            <div className="empty-state">Select a patient to view their record</div>
+          ) : (
+            <>
+              <div className="patient-header">
+                <div>
+                  <div className="patient-title">{selected.full_name}</div>
+                  <div className="patient-subtitle">
+                    {selected.date_of_birth ? `DOB: ${formatDate(selected.date_of_birth)} · ` : ''}
+                    {selected.preferred_language === 'fr' ? 'French' : 'English'}
+                    {selected.is_minor ? ' · Minor' : ''}
                   </div>
                 </div>
-                <span className="status-badge" style={{ background: STATUS_STYLE[selected.intake_status]?.bg, color: STATUS_STYLE[selected.intake_status]?.color, marginLeft: '50px' }}>
-                  {STATUS_STYLE[selected.intake_status]?.label}
-                </span>
+                {selected.intake_status === 'pending_review' && (staffRole === 'owner' || staffRole === 'dentist' || staffRole === 'receptionist') && (
+                  <div className="action-btns">
+                    <button className="btn-approve" disabled={processing} onClick={() => updateIntakeStatus('approved')}>Approve</button>
+                    <button className="btn-reject" onClick={() => setShowReject(v => !v)}>Reject</button>
+                  </div>
+                )}
               </div>
-              <button className="close-btn" onClick={() => setSelected(null)}>✕</button>
-            </div>
 
-            <div className="panel-body">
-              {/* Approve / Reject */}
-              {selected.intake_status === 'pending_review' && (
-                <>
-                  <div className="assign-box">
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '10px' }}>
-                      Assign care team
-                    </div>
-                    <div className="assign-row">
-                      <div>
-                        <div className="assign-label">Dentist</div>
-                        <select className="assign-select" value={assignedDentistId} onChange={e => setAssignedDentistId(e.target.value)}>
-                          <option value="">— Unassigned</option>
-                          {dentists.filter(d => d.role === 'dentist' || d.role === 'owner').map(d => (
-                            <option key={d.id} value={d.id}>{d.full_name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <div className="assign-label">Hygienist</div>
-                        <select className="assign-select" value={assignedHygienistId} onChange={e => setAssignedHygienistId(e.target.value)}>
-                          <option value="">— Unassigned</option>
-                          {dentists.filter(d => d.role === 'hygienist').map(d => (
-                            <option key={d.id} value={d.id}>{d.full_name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="action-row">
-                    <button className="btn-approve" onClick={approve} disabled={processing}>✓ Approve patient</button>
-                    <button className="btn-reject" onClick={() => setShowReject(!showReject)}>✕ Reject</button>
-                  </div>
-                  {showReject && (
-                    <div className="reject-box">
-                      <div style={{ fontSize: '13px', fontWeight: 500, color: '#0F172A', marginBottom: '8px' }}>Reason for rejection (optional)</div>
-                      <textarea rows={2} value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} placeholder="e.g. Missing insurance information..." />
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                        <button className="btn-sm btn-cancel-sm" onClick={() => setShowReject(false)}>Cancel</button>
-                        <button className="btn-sm btn-confirm-reject" onClick={reject} disabled={processing}>Confirm rejection</button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {selected.intake_status === 'rejected' && selected.intake_rejection_reason && (
-                <div className="reject-reason-shown">
-                  Rejected: {selected.intake_rejection_reason}
-                </div>
-              )}
-
-              {/* Care team assignment — always visible and editable regardless of intake status */}
-              {selected.intake_status !== 'pending_review' && (
-                <div className="assign-box" style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '10px' }}>Care team</div>
-                  <div className="assign-row">
-                    <div>
-                      <div className="assign-label">Dentist</div>
-                      <select className="assign-select" value={assignedDentistId} onChange={e => setAssignedDentistId(e.target.value)}>
-                        <option value="">— Unassigned</option>
-                        {dentists.filter(d => d.role === 'dentist' || d.role === 'owner').map(d => (
-                          <option key={d.id} value={d.id}>{d.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <div className="assign-label">Hygienist</div>
-                      <select className="assign-select" value={assignedHygienistId} onChange={e => setAssignedHygienistId(e.target.value)}>
-                        <option value="">— Unassigned</option>
-                        {dentists.filter(d => d.role === 'hygienist').map(d => (
-                          <option key={d.id} value={d.id}>{d.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {assignmentSaved
-                    ? <div className="assign-saved">✓ Saved</div>
-                    : <button className="assign-save" onClick={saveAssignment} disabled={savingAssignment}>
-                        {savingAssignment ? 'Saving...' : 'Save assignment'}
-                      </button>
-                  }
+              {showReject && (
+                <div className="reject-box section">
+                  <input className="reject-input" placeholder="Reason for rejection..." value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} />
+                  <button className="btn-reject" disabled={processing} onClick={() => updateIntakeStatus('rejected')}>Confirm rejection</button>
                 </div>
               )}
 
               {loadingDetail ? (
-                <div className="loading-panel">Loading patient details...</div>
+                <div style={{ fontSize: 13, color: '#CBD5E1' }}>Loading record...</div>
               ) : (
                 <>
-                  {/* Allergy alert banner */}
-                  {(detail?.medical as any)?.has_allergies && ((detail?.medical as any)?.allergies || []).length > 0 && (
-                    <div className="emergency-banner">
-                      <div className="emergency-title">⚠ Allergies — review before treatment</div>
-                      <div>
-                        {((detail?.medical as any).allergies || []).map((a: any, i: number) => (
-                          <span key={i} className="tag tag-allergy">{a.name}{a.severity ? ` (${a.severity})` : ''}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Contact */}
                   <div className="section">
                     <div className="section-label">Contact</div>
                     <div className="info-grid">
                       {[
-                        ['Date of birth', selected.date_of_birth || '—'],
-                        ['Primary phone', selected.phone_primary || '—'],
-                        ['Secondary phone', selected.phone_secondary || '—'],
-                        ['Language', selected.preferred_language === 'fr' ? 'Français' : 'English'],
-                        ['Address', selected.address_line1 ? `${selected.address_line1}, ${selected.city}` : '—'],
-                        ['Postal code', selected.postal_code || '—'],
+                        ['Email', selected.email],
+                        ['Phone', selected.phone_primary || '—'],
+                        ['Address', [selected.address_line1, selected.city, selected.postal_code].filter(Boolean).join(', ') || '—'],
+                        ['Emergency contact', selected.emergency_contact_name ? `${selected.emergency_contact_name} (${selected.emergency_contact_relationship}) ${selected.emergency_contact_phone}` : '—'],
                       ].map(([k, v]) => (
-                        <div key={k}>
-                          <div className="info-key">{k}</div>
-                          <div className="info-val">{v}</div>
-                        </div>
+                        <div key={k}><div className="info-key">{k}</div><div className="info-val">{v}</div></div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Emergency contact */}
-                  {selected.emergency_contact_name && (
+                  {/* Provider assignment */}
+                  {(staffRole === 'owner' || staffRole === 'receptionist') && (
                     <div className="section">
-                      <div className="section-label">Emergency contact</div>
-                      <div className="info-grid">
-                        <div><div className="info-key">Name</div><div className="info-val">{selected.emergency_contact_name}</div></div>
-                        <div><div className="info-key">Phone</div><div className="info-val">{selected.emergency_contact_phone || '—'}</div></div>
-                        <div><div className="info-key">Relationship</div><div className="info-val">{selected.emergency_contact_relationship || '—'}</div></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Insurance */}
-                  {detail?.insurance && (detail.insurance as any[]).length > 0 && (
-                    <div className="section">
-                      <div className="section-label">Insurance</div>
-                      {(detail.insurance as any[]).map((ins, i) => (
-                        <div key={i} style={{ marginBottom: i < (detail.insurance as any[]).length - 1 ? '12px' : 0 }}>
-                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '6px', textTransform: 'capitalize' }}>
-                            {ins.coverage_order} insurance
-                          </div>
-                          <div className="info-grid">
-                            {[
-                              ['Provider', ins.provider_name],
-                              ['Policy #', ins.policy_number || '—'],
-                              ['Certificate #', ins.certificate_number || '—'],
-                              ['Group #', ins.group_number || '—'],
-                            ].map(([k, v]) => (
-                              <div key={k}><div className="info-key">{k}</div><div className="info-val">{v}</div></div>
-                            ))}
-                          </div>
+                      <div className="section-label">Provider assignment</div>
+                      <div className="assign-row">
+                        <div style={{ flex: 1 }}>
+                          <div className="info-key" style={{ marginBottom: 4 }}>Dentist</div>
+                          <select className="assign-select" value={assignedDentistId} onChange={e => setAssignedDentistId(e.target.value)}>
+                            <option value="">Unassigned</option>
+                            {dentists.filter(d => d.role === 'dentist' || d.role === 'owner').map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+                          </select>
                         </div>
-                      ))}
+                        <div style={{ flex: 1 }}>
+                          <div className="info-key" style={{ marginBottom: 4 }}>Hygienist</div>
+                          <select className="assign-select" value={assignedHygienistId} onChange={e => setAssignedHygienistId(e.target.value)}>
+                            <option value="">Unassigned</option>
+                            {dentists.filter(d => d.role === 'hygienist').map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+                          </select>
+                        </div>
+                        <button className={`btn-save-assign ${assignmentSaved ? '' : ''}`} onClick={saveAssignment} disabled={savingAssignment}>
+                          {savingAssignment ? 'Saving...' : assignmentSaved ? '✓ Saved' : 'Save'}
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -598,40 +374,29 @@ export default function PatientsPage() {
                   {detail?.medical ? (
                     <div className="section">
                       <div className="section-label">Medical history</div>
-
-                      {(detail.medical as any).takes_medications && (
-                        <div style={{ marginBottom: '10px' }}>
-                          <div className="info-key" style={{ marginBottom: '4px' }}>Medications</div>
-                          {((detail.medical as any).medications || []).map((m: any, i: number) => (
-                            <span key={i} className="tag tag-med">{m.name} {m.dosage} — {m.frequency}</span>
-                          ))}
-                        </div>
-                      )}
-
-                      <div style={{ marginBottom: '10px' }}>
-                        <div className="info-key" style={{ marginBottom: '4px' }}>Conditions</div>
-                        {Object.entries((detail.medical as any).conditions || {})
-                          .filter(([k, v]) => v === true && k !== 'other')
-                          .map(([k]) => <span key={k} className="tag tag-cond">{k.replace(/_/g, ' ')}</span>)}
-                        {(detail.medical as any).conditions?.other && (
-                          <div style={{ fontSize: '13px', color: '#475569', marginTop: '4px' }}>{(detail.medical as any).conditions.other}</div>
-                        )}
-                        {Object.values((detail.medical as any).conditions || {}).every(v => !v) && (
-                          <span style={{ fontSize: '13px', color: '#94A3B8' }}>None reported</span>
-                        )}
-                      </div>
-
-                      <div className="info-grid">
+                      <div className="info-grid" style={{ marginBottom: 10 }}>
                         {[
-                          ['Smoker', (detail.medical as any).smoker || '—'],
-                          ['Pregnant', (detail.medical as any).is_pregnant ? 'Yes' : 'No'],
                           ['Physician', (detail.medical as any).physician_name || '—'],
-                          ['Physician phone', (detail.medical as any).physician_phone || '—'],
                           ['Last physical', (detail.medical as any).last_physical_date || '—'],
+                          ['Smoker', (detail.medical as any).smoker || '—'],
+                          ['Alcohol', (detail.medical as any).alcohol_use || '—'],
+                          ['Pregnant', (detail.medical as any).is_pregnant === true ? 'Yes' : (detail.medical as any).is_pregnant === false ? 'No' : '—'],
                         ].map(([k, v]) => (
                           <div key={k}><div className="info-key">{k}</div><div className="info-val">{v as string}</div></div>
                         ))}
                       </div>
+                      {(detail.medical as any).has_allergies && ((detail.medical as any).allergies as string[]).length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div className="info-key" style={{ marginBottom: 4 }}>Allergies</div>
+                          {((detail.medical as any).allergies as string[]).map((a: string) => <span key={a} className="tag tag-allergy">{a}</span>)}
+                        </div>
+                      )}
+                      {(detail.medical as any).takes_medications && ((detail.medical as any).medications as string[]).length > 0 && (
+                        <div>
+                          <div className="info-key" style={{ marginBottom: 4 }}>Medications</div>
+                          {((detail.medical as any).medications as string[]).map((m: string) => <span key={m} className="tag tag-med">{m}</span>)}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="section">
@@ -644,9 +409,8 @@ export default function PatientsPage() {
                   {detail?.dental ? (
                     <div className="section">
                       <div className="section-label">Dental history</div>
-                      <div className="info-grid">
+                      <div className="info-grid" style={{ marginBottom: 10 }}>
                         {[
-                          ['Chief complaint', (detail.dental as any).chief_complaint || '—'],
                           ['Last visit', (detail.dental as any).last_visit_date || '—'],
                           ['Last X-rays', (detail.dental as any).last_xray_date || '—'],
                           ['Anxiety', `${(detail.dental as any).dental_anxiety}/5`],
@@ -657,13 +421,13 @@ export default function PatientsPage() {
                           <div key={k}><div className="info-key">{k}</div><div className="info-val">{v as string}</div></div>
                         ))}
                       </div>
-                      <div style={{ marginTop: '10px' }}>
-                        <div className="info-key" style={{ marginBottom: '4px' }}>Dental conditions</div>
+                      <div style={{ marginTop: 10 }}>
+                        <div className="info-key" style={{ marginBottom: 4 }}>Dental conditions</div>
                         {Object.entries(detail.dental as any)
                           .filter(([k, v]) => v === true && ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj','has_dry_mouth','sensitive_teeth'].includes(k))
                           .map(([k]) => <span key={k} className="tag tag-cond">{k.replace(/has_|had_/g, '').replace(/_/g, ' ')}</span>)}
                         {Object.entries(detail.dental as any).filter(([k, v]) => v === true && ['has_crowns','has_bridges','has_implants','has_dentures','had_orthodontics','has_gum_disease','grinds_teeth','has_tmj','has_dry_mouth','sensitive_teeth'].includes(k)).length === 0 && (
-                          <span style={{ fontSize: '13px', color: '#94A3B8' }}>None reported</span>
+                          <span style={{ fontSize: 13, color: '#94A3B8' }}>None reported</span>
                         )}
                       </div>
                     </div>
@@ -694,7 +458,7 @@ export default function PatientsPage() {
                           <div className="sig-label">Electronic signature</div>
                           <div className="sig-text">{(detail.consents as any).signature_text}</div>
                           {(detail.consents as any).signed_at && (
-                            <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>
+                            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
                               Signed {formatDate((detail.consents as any).signed_at)}
                             </div>
                           )}
@@ -721,43 +485,29 @@ export default function PatientsPage() {
                       {showAddNote && (
                         <div className="note-form">
                           <div className="note-form-title">New visit note</div>
-                          <label className="note-label">Chief complaint / reason for visit</label>
-                          <textarea className="note-textarea" rows={2}
-                            placeholder="Patient presented with..."
-                            value={newNote.chiefComplaint}
-                            onChange={e => setNewNote(p => ({ ...p, chiefComplaint: e.target.value }))} />
+                          <label className="note-label">Chief complaint</label>
+                          <textarea className="note-textarea" rows={2} placeholder="Patient presented with..." value={newNote.chiefComplaint} onChange={e => setNewNote(p => ({ ...p, chiefComplaint: e.target.value }))} />
                           <label className="note-label">Clinical findings *</label>
-                          <textarea className="note-textarea" rows={3}
-                            placeholder="Examination findings, X-ray results, periodontal scores..."
-                            value={newNote.findings}
-                            onChange={e => setNewNote(p => ({ ...p, findings: e.target.value }))} />
+                          <textarea className="note-textarea" rows={3} placeholder="Examination findings..." value={newNote.findings} onChange={e => setNewNote(p => ({ ...p, findings: e.target.value }))} />
                           <label className="note-label">Treatment performed</label>
-                          <textarea className="note-textarea" rows={2}
-                            placeholder="Procedures completed today..."
-                            value={newNote.treatmentDone}
-                            onChange={e => setNewNote(p => ({ ...p, treatmentDone: e.target.value }))} />
-                          <label className="note-label">Next steps / follow-up</label>
-                          <textarea className="note-textarea" rows={2}
-                            placeholder="Return in 6 months for recall, patient to monitor..."
-                            value={newNote.nextSteps}
-                            onChange={e => setNewNote(p => ({ ...p, nextSteps: e.target.value }))} />
+                          <textarea className="note-textarea" rows={2} placeholder="Procedures completed..." value={newNote.treatmentDone} onChange={e => setNewNote(p => ({ ...p, treatmentDone: e.target.value }))} />
+                          <label className="note-label">Next steps</label>
+                          <textarea className="note-textarea" rows={2} placeholder="Return in 6 months..." value={newNote.nextSteps} onChange={e => setNewNote(p => ({ ...p, nextSteps: e.target.value }))} />
                           <div className="note-actions">
-                            <button className={"note-save-btn" + (noteSaved ? ' saved' : '')}
-                              onClick={saveNote} disabled={savingNote || !newNote.findings.trim()}>
+                            <button className={`note-save-btn${noteSaved ? ' saved' : ''}`} onClick={saveNote} disabled={savingNote || !newNote.findings.trim()}>
                               {savingNote ? 'Saving...' : noteSaved ? '✓ Saved' : 'Save note'}
                             </button>
                             <button className="note-cancel-btn" onClick={() => setShowAddNote(false)}>Cancel</button>
                             <label className="private-toggle">
-                              <input type="checkbox" checked={newNote.isPrivate}
-                                onChange={e => setNewNote(p => ({ ...p, isPrivate: e.target.checked }))} />
-                              Staff only (private)
+                              <input type="checkbox" checked={newNote.isPrivate} onChange={e => setNewNote(p => ({ ...p, isPrivate: e.target.checked }))} />
+                              Staff only
                             </label>
                           </div>
                         </div>
                       )}
 
                       {loadingNotes ? (
-                        <div style={{ fontSize: '13px', color: '#CBD5E1', padding: '12px 0' }}>Loading notes...</div>
+                        <div style={{ fontSize: 13, color: '#CBD5E1', padding: '12px 0' }}>Loading notes...</div>
                       ) : treatmentNotes.length === 0 ? (
                         <div className="no-data">No treatment notes yet</div>
                       ) : treatmentNotes.map(note => (
@@ -768,40 +518,20 @@ export default function PatientsPage() {
                             {note.appointment_type && <span className="note-author">· {note.appointment_type}</span>}
                             {note.is_private && <span className="private-badge">Private</span>}
                           </div>
-                          {note.chief_complaint && (
-                            <div className="note-field">
-                              <div className="note-field-label">Chief complaint</div>
-                              <div className="note-field-val">{note.chief_complaint}</div>
-                            </div>
-                          )}
-                          {note.findings && (
-                            <div className="note-field">
-                              <div className="note-field-label">Findings</div>
-                              <div className="note-field-val">{note.findings}</div>
-                            </div>
-                          )}
-                          {note.treatment_done && (
-                            <div className="note-field">
-                              <div className="note-field-label">Treatment performed</div>
-                              <div className="note-field-val">{note.treatment_done}</div>
-                            </div>
-                          )}
-                          {note.next_steps && (
-                            <div className="note-field">
-                              <div className="note-field-label">Next steps</div>
-                              <div className="note-field-val">{note.next_steps}</div>
-                            </div>
-                          )}
+                          {note.chief_complaint && <div className="note-field"><div className="note-field-label">Chief complaint</div><div className="note-field-val">{note.chief_complaint}</div></div>}
+                          {note.findings && <div className="note-field"><div className="note-field-label">Findings</div><div className="note-field-val">{note.findings}</div></div>}
+                          {note.treatment_done && <div className="note-field"><div className="note-field-label">Treatment performed</div><div className="note-field-val">{note.treatment_done}</div></div>}
+                          {note.next_steps && <div className="note-field"><div className="note-field-label">Next steps</div><div className="note-field-val">{note.next_steps}</div></div>}
                         </div>
                       ))}
                     </div>
                   )}
                 </>
               )}
-            </div>
-          </div>
-        </>
-      )}
+            </>
+          )}
+        </div>
+      </div>
     </>
   )
 }
