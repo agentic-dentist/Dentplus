@@ -36,7 +36,6 @@ export default function ClinicHomePage() {
           .select('is_approved')
           .eq('auth_id', user.id)
           .maybeSingle()
-          console.log('account:', JSON.stringify(account), 'error:', JSON.stringify(accountError))
         if (account) { router.replace('/portal'); return }
         // Auth user exists but no patient account (staff/owner) — sign out
         await supabase.auth.signOut()
