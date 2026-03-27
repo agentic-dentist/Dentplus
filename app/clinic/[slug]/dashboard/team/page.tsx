@@ -203,12 +203,6 @@ export default function TeamPage() {
 
     const { data: rows } = await supabase
       .from('provider_schedules')
-      .select('day_of_week, start_time, end_time, is_active')
-      .eq('staff_id', member.id)
-      .eq('clinic_id', clinicId)
-
-    const { data: rows } = await supabase
-      .from('provider_schedules')
       .select('day_of_week, start_time, end_time, is_active, lunch_start, lunch_end')
       .eq('staff_id', member.id)
       .eq('clinic_id', clinicId)
