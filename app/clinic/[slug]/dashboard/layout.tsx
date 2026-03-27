@@ -127,14 +127,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const clinic = Array.isArray(owner.clinics) ? owner.clinics[0] : owner.clinics
         const name = (clinic as { name: string })?.name || ''
         const fullName = user.user_metadata?.full_name || 'Clinic Owner'
+        const ownerEmail = (user.email || '').trim().toLowerCase()
         setRole('owner')
         setIsOwner(true)
         setClinicName(name)
         setStaffName(fullName)
 
+        // Ensure owner has a staff_accounts row (needed for treatment notes FK, writtenBy, etc.)
+        let ownerStaffId = ''
+        const { data: existingStaff } = await supabase
+          .from('staff_accounts')
+          .select('id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+
+        if (existingStaff) {
+          ownerStaffId = existingStaff.id
+        } else {
+          // Create the missing staff_accounts row for this owner
+          const { data: newStaff } = await supabase
+            .from('staff_accounts')
+            .insert({
+              auth_id: user.id,
+              clinic_id: owner.clinic_id,
+              email: ownerEmail,
+              full_name: fullName,
+              role: 'owner',
+              is_active: true,
+            })
+            .select('id')
+            .single()
+          ownerStaffId = newStaff?.id || ''
+        }
+
         setClinicUser({
           clinicId: owner.clinic_id,
-          staffId: '',
+          staffId: ownerStaffId,
           staffName: fullName,
           staffRole: 'owner',
           isOwner: true,

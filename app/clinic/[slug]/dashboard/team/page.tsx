@@ -110,10 +110,11 @@ export default function TeamPage() {
   const sendInvite = async () => {
     if (!inviteEmail) { setError('Email is required.'); return }
     setSending(true); setError(''); setInviteLink('')
+    const normalizedEmail = inviteEmail.trim().toLowerCase()
 
     const { data, error: inviteError } = await supabase
       .from('staff_invites')
-      .insert({ clinic_id: clinicId, invited_by: ownerId, email: inviteEmail, full_name: inviteName || null, role: inviteRole })
+      .insert({ clinic_id: clinicId, invited_by: ownerId, email: normalizedEmail, full_name: inviteName || null, role: inviteRole })
       .select().single()
 
     if (inviteError || !data) { setError('Failed to create invite.'); setSending(false); return }
@@ -129,7 +130,7 @@ export default function TeamPage() {
       body: JSON.stringify({ inviteId: data.id, clinicId }),
     })
 
-    setInviteEmail(''); setInviteName('')
+    setInviteEmail(''); setInviteName(''); setInviteRole('receptionist')
     setSent(true); setSending(false)
     setTimeout(() => setSent(false), 3000)
   }

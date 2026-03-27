@@ -33,9 +33,12 @@ export async function POST(request: Request) {
       .eq('clinic_id', invite.clinic_id)
       .single()
 
+    // Normalize email to lowercase before creating auth user
+    const normalizedEmail = invite.email.trim().toLowerCase()
+
     // Create auth user
     const { data: authData, error: authError } = await db.auth.admin.createUser({
-      email: invite.email,
+      email: normalizedEmail,
       password,
       email_confirm: true
     })
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
     const { error: staffError } = await db.from('staff_accounts').insert({
       auth_id: authData.user.id,
       clinic_id: invite.clinic_id,
-      email: invite.email,
+      email: normalizedEmail,
       full_name: invite.full_name || invite.email.split('@')[0],
       role: invite.role,
       is_active: true
