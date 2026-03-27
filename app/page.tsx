@@ -2,657 +2,441 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'DentPlus — The AI-Powered Dental Practice Platform',
-  description: 'Replace your front desk with AI. Automated booking, waitlist management, patient intake, and reminders — 24/7, bilingual FR/EN. Built for Canadian dental clinics.',
+  description: 'Replace your front desk with AI. Automated booking, SMS reminders, insurance-aware recall, and patient intake — 24/7, bilingual FR/EN. Built for Canadian dental clinics.',
 }
 
 export default function HomePage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
-
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
         :root {
-          --bg:       #080E1A;
-          --surface:  #0F172A;
-          --border:   rgba(255,255,255,.07);
-          --teal:     #0EA5E9;
-          --teal-dim: rgba(14,165,233,.15);
-          --white:    #F8FAFC;
-          --muted:    #64748B;
-          --text:     #CBD5E1;
+          --teal: #00C4A7;
+          --teal-dark: #009E87;
+          --teal-light: #E6FAF7;
+          --teal-mid: #CCFAF3;
+          --teal-border: rgba(0,196,167,0.25);
+          --black: #0A0F1A;
+          --text: #1A2236;
+          --muted: #6B7A99;
+          --light-muted: #94A3B8;
+          --bg: #F8FAFB;
+          --white: #FFFFFF;
+          --border: #E2E8F0;
+          --border-strong: #CBD5E1;
+          --surface: #F1F5F9;
         }
-
         html { scroll-behavior: smooth; }
-
         body {
           font-family: 'DM Sans', sans-serif;
           background: var(--bg);
           color: var(--text);
+          line-height: 1.6;
           overflow-x: hidden;
         }
-
-        /* ── NAV ── */
+        /* NAV */
         nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+          position: sticky; top: 0; z-index: 100;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 18px 48px;
-          background: rgba(8,14,26,.85);
+          padding: 0 64px; height: 68px;
+          background: rgba(255,255,255,0.92);
           backdrop-filter: blur(20px);
           border-bottom: 1px solid var(--border);
         }
-        .nav-logo {
-          font-family: 'Syne', sans-serif;
-          font-size: 20px; font-weight: 800;
-          color: var(--white); letter-spacing: -.3px;
-          text-decoration: none;
-        }
-        .nav-logo span { color: var(--teal); }
-        .nav-links { display: flex; align-items: center; gap: 32px; }
-        .nav-links a {
-          font-size: 14px; color: var(--muted);
-          text-decoration: none; transition: color .2s;
-        }
-        .nav-links a:hover { color: var(--white); }
-        .nav-cta {
-          padding: 9px 22px;
-          background: var(--teal); color: white;
-          border-radius: 8px; font-size: 14px; font-weight: 500;
-          text-decoration: none; transition: all .2s;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .nav-cta:hover { background: #0284C7; transform: translateY(-1px); }
-
-        /* ── HERO ── */
-        .hero {
-          min-height: 100vh;
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          padding: 120px 24px 80px;
-          position: relative; overflow: hidden;
-          text-align: center;
-        }
-        .hero-glow {
-          position: absolute; top: -200px; left: 50%;
-          transform: translateX(-50%);
-          width: 800px; height: 600px;
-          background: radial-gradient(ellipse, rgba(14,165,233,.12) 0%, transparent 70%);
-          pointer-events: none;
-        }
-        .hero-grid {
-          position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(14,165,233,.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(14,165,233,.04) 1px, transparent 1px);
-          background-size: 60px 60px;
-          mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%);
-        }
-        .hero-badge {
-          display: inline-flex; align-items: center; gap: 8px;
-          padding: 6px 16px;
-          background: var(--teal-dim);
-          border: 1px solid rgba(14,165,233,.3);
-          border-radius: 100px;
-          font-size: 12px; font-weight: 500; color: var(--teal);
-          margin-bottom: 28px; letter-spacing: .5px;
-          text-transform: uppercase;
-        }
-        .hero-badge-dot {
-          width: 6px; height: 6px; border-radius: 50%;
-          background: var(--teal);
-          animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: .5; transform: scale(.8); }
-        }
-        h1 {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(42px, 7vw, 80px);
-          font-weight: 800; line-height: 1.05;
-          color: var(--white); letter-spacing: -2px;
-          max-width: 900px; margin-bottom: 24px;
-        }
-        h1 em {
-          font-style: normal; color: var(--teal);
-          position: relative;
-        }
-        .hero-sub {
-          font-size: clamp(16px, 2vw, 19px);
-          font-weight: 300; color: var(--text);
-          max-width: 580px; line-height: 1.7;
-          margin-bottom: 44px;
-        }
-        .hero-sub strong { color: var(--white); font-weight: 500; }
-        .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-        .btn-primary {
-          padding: 14px 32px;
-          background: var(--teal); color: white;
-          border-radius: 10px; font-size: 15px; font-weight: 500;
-          text-decoration: none; transition: all .2s;
-          font-family: 'DM Sans', sans-serif;
-          box-shadow: 0 0 32px rgba(14,165,233,.3);
-        }
-        .btn-primary:hover { background: #0284C7; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(14,165,233,.4); }
-        .btn-secondary {
-          padding: 14px 32px;
-          background: transparent; color: var(--white);
-          border: 1px solid var(--border);
-          border-radius: 10px; font-size: 15px; font-weight: 400;
-          text-decoration: none; transition: all .2s;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .btn-secondary:hover { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.04); }
-
-        .hero-stats {
-          display: flex; gap: 48px; margin-top: 72px;
-          padding-top: 48px;
-          border-top: 1px solid var(--border);
-          flex-wrap: wrap; justify-content: center;
-        }
-        .hero-stat-val {
-          font-family: 'Syne', sans-serif;
-          font-size: 32px; font-weight: 700; color: var(--white);
-          line-height: 1;
-        }
-        .hero-stat-val span { color: var(--teal); }
-        .hero-stat-label { font-size: 13px; color: var(--muted); margin-top: 6px; }
-
-        /* ── PROBLEM ── */
-        .section {
-          padding: 100px 24px;
-          max-width: 1100px; margin: 0 auto;
-        }
-        .section-label {
-          font-size: 11px; font-weight: 600;
-          color: var(--teal); letter-spacing: 2px;
-          text-transform: uppercase; margin-bottom: 16px;
-        }
-        h2 {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(28px, 4vw, 44px);
-          font-weight: 700; color: var(--white);
-          letter-spacing: -1px; line-height: 1.15;
-          margin-bottom: 16px;
-        }
-        .section-sub {
-          font-size: 16px; color: var(--text);
-          max-width: 560px; line-height: 1.7;
-          font-weight: 300;
-        }
-
-        .problem-grid {
-          display: grid; grid-template-columns: 1fr 1fr;
-          gap: 2px; margin-top: 56px;
-          border-radius: 16px; overflow: hidden;
-          border: 1px solid var(--border);
-        }
-        .problem-card {
-          background: var(--surface);
-          padding: 32px;
-        }
-        .problem-card.highlight { background: var(--teal-dim); }
-        .problem-year {
-          font-family: 'Syne', sans-serif;
-          font-size: 48px; font-weight: 800;
-          color: var(--border); line-height: 1;
-          margin-bottom: 12px;
-        }
-        .problem-card.highlight .problem-year { color: rgba(14,165,233,.3); }
-        .problem-title {
-          font-size: 18px; font-weight: 600;
-          color: var(--white); margin-bottom: 8px;
-        }
-        .problem-desc { font-size: 14px; color: var(--muted); line-height: 1.6; }
-        .problem-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
-        .problem-tag {
-          padding: 4px 10px; border-radius: 20px;
-          font-size: 11px; font-weight: 500;
-          background: rgba(255,255,255,.05); color: var(--muted);
-        }
-        .problem-tag.good {
-          background: rgba(14,165,233,.12); color: var(--teal);
-        }
-
-        /* ── FEATURES ── */
-        .features-section {
-          padding: 100px 24px;
-          background: var(--surface);
-          border-top: 1px solid var(--border);
-          border-bottom: 1px solid var(--border);
-        }
-        .features-inner { max-width: 1100px; margin: 0 auto; }
-        .features-grid {
-          display: grid; grid-template-columns: repeat(3, 1fr);
-          gap: 1px; margin-top: 56px;
-          background: var(--border);
-          border-radius: 16px; overflow: hidden;
-        }
-        .feature-card {
-          background: var(--surface);
-          padding: 36px 32px;
-          transition: background .2s;
-        }
-        .feature-card:hover { background: rgba(14,165,233,.04); }
-        .feature-icon {
-          width: 44px; height: 44px;
-          background: var(--teal-dim);
-          border: 1px solid rgba(14,165,233,.2);
-          border-radius: 10px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 20px; margin-bottom: 20px;
-        }
-        .feature-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 17px; font-weight: 700;
-          color: var(--white); margin-bottom: 10px;
-        }
-        .feature-desc { font-size: 14px; color: var(--muted); line-height: 1.65; }
-
-        /* ── HOW IT WORKS ── */
-        .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 56px; }
-        .step { position: relative; }
-        .step-num {
-          font-family: 'Syne', sans-serif;
-          font-size: 64px; font-weight: 800;
-          color: rgba(14,165,233,.08); line-height: 1;
-          margin-bottom: -16px;
-        }
-        .step-title { font-size: 17px; font-weight: 600; color: var(--white); margin-bottom: 8px; }
-        .step-desc { font-size: 14px; color: var(--muted); line-height: 1.65; }
-
-        /* ── BILINGUAL ── */
-        .bilingual-section {
-          padding: 80px 24px;
-          max-width: 1100px; margin: 0 auto;
-        }
-        .bilingual-card {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 20px; padding: 56px;
-          display: grid; grid-template-columns: 1fr 1fr;
-          gap: 48px; align-items: center;
-        }
-        .bilingual-chat {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 12px; padding: 24px;
-          display: flex; flex-direction: column; gap: 12px;
-        }
-        .chat-msg {
-          padding: 10px 14px; border-radius: 10px;
-          font-size: 13px; line-height: 1.5; max-width: 85%;
-        }
-        .chat-msg.bot {
-          background: var(--teal-dim);
-          border: 1px solid rgba(14,165,233,.15);
-          color: var(--text);
-        }
-        .chat-msg.user {
-          background: rgba(255,255,255,.05);
-          color: var(--text); align-self: flex-end;
-        }
-        .chat-lang {
-          font-size: 10px; font-weight: 600;
-          color: var(--teal); letter-spacing: 1px;
-          text-transform: uppercase; margin-bottom: 8px;
-        }
-
-        /* ── PRICING ── */
-        .pricing-section {
-          padding: 100px 24px;
-          background: var(--surface);
-          border-top: 1px solid var(--border);
-        }
-        .pricing-inner { max-width: 900px; margin: 0 auto; text-align: center; }
-        .pricing-grid {
-          display: grid; grid-template-columns: repeat(3, 1fr);
-          gap: 16px; margin-top: 48px; text-align: left;
-        }
-        .pricing-card {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 16px; padding: 32px;
-          position: relative; transition: border-color .2s;
-        }
-        .pricing-card:hover { border-color: rgba(14,165,233,.3); }
-        .pricing-card.featured {
-          border-color: var(--teal);
-          background: var(--teal-dim);
-        }
-        .pricing-plan {
-          font-size: 12px; font-weight: 600;
-          color: var(--muted); letter-spacing: 1px;
-          text-transform: uppercase; margin-bottom: 12px;
-        }
-        .pricing-card.featured .pricing-plan { color: var(--teal); }
-        .pricing-price {
-          font-family: 'Syne', sans-serif;
-          font-size: 36px; font-weight: 800;
-          color: var(--white); line-height: 1;
-          margin-bottom: 4px;
-        }
-        .pricing-price sup { font-size: 18px; vertical-align: super; }
-        .pricing-period { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
-        .pricing-features { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-        .pricing-features li {
-          font-size: 13px; color: var(--text);
-          display: flex; align-items: flex-start; gap: 8px; line-height: 1.4;
-        }
-        .pricing-features li::before { content: '✓'; color: var(--teal); font-weight: 700; flex-shrink: 0; }
-        .pricing-btn {
-          display: block; width: 100%;
-          padding: 11px; margin-top: 28px;
-          text-align: center; border-radius: 8px;
-          font-size: 14px; font-weight: 500;
-          text-decoration: none; transition: all .2s;
-          font-family: 'DM Sans', sans-serif;
-          border: 1px solid var(--border);
-          color: var(--white); background: transparent;
-        }
-        .pricing-btn:hover { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.05); }
-        .pricing-card.featured .pricing-btn {
-          background: var(--teal); border-color: var(--teal); color: white;
-        }
-        .pricing-card.featured .pricing-btn:hover { background: #0284C7; }
-        .pricing-badge {
-          position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-          padding: 4px 14px; background: var(--teal);
-          border-radius: 100px; font-size: 11px; font-weight: 600; color: white;
-          white-space: nowrap;
-        }
-
-        /* ── CTA ── */
-        .cta-section {
-          padding: 100px 24px; text-align: center;
-          position: relative; overflow: hidden;
-        }
-        .cta-glow {
-          position: absolute; bottom: -100px; left: 50%;
-          transform: translateX(-50%);
-          width: 600px; height: 400px;
-          background: radial-gradient(ellipse, rgba(14,165,233,.08) 0%, transparent 70%);
-          pointer-events: none;
-        }
-        .cta-inner { max-width: 600px; margin: 0 auto; position: relative; }
-        .cta-pipeda {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 6px 14px;
-          background: rgba(16,185,129,.1);
-          border: 1px solid rgba(16,185,129,.2);
-          border-radius: 100px;
-          font-size: 12px; color: #10B981; margin-bottom: 24px;
-        }
-
-        /* ── FOOTER ── */
-        footer {
-          padding: 32px 48px;
-          border-top: 1px solid var(--border);
-          display: flex; align-items: center; justify-content: space-between;
-          flex-wrap: wrap; gap: 16px;
-        }
-        .footer-logo {
-          font-family: 'Syne', sans-serif;
-          font-size: 16px; font-weight: 700; color: var(--white);
-          text-decoration: none;
-        }
-        .footer-logo span { color: var(--teal); }
-        .footer-links { display: flex; gap: 24px; }
-        .footer-links a { font-size: 13px; color: var(--muted); text-decoration: none; }
-        .footer-links a:hover { color: var(--white); }
-        .footer-copy { font-size: 12px; color: var(--muted); }
-
-        @media (max-width: 768px) {
-          nav { padding: 16px 24px; }
+        .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+        .nav-logo-icon { width: 34px; height: 34px; background: var(--teal); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 17px; }
+        .nav-logo-text { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--black); }
+        .nav-links { display: flex; gap: 36px; }
+        .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color .15s; }
+        .nav-links a:hover { color: var(--black); }
+        .nav-right { display: flex; gap: 10px; align-items: center; }
+        .btn-nav-ghost { padding: 8px 18px; background: none; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text); font-family: 'DM Sans', sans-serif; transition: all .15s; text-decoration: none; display: inline-block; }
+        .btn-nav-ghost:hover { border-color: var(--teal); color: var(--teal-dark); }
+        .btn-nav-solid { padding: 8px 20px; background: var(--teal); border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; color: white; font-family: 'DM Sans', sans-serif; transition: all .15s; text-decoration: none; display: inline-block; }
+        .btn-nav-solid:hover { background: var(--teal-dark); }
+        /* HERO */
+        .hero { padding: 100px 64px 0; max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; min-height: calc(100vh - 68px); }
+        .hero-left { padding-bottom: 80px; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border: 1.5px solid var(--teal-border); background: var(--teal-light); border-radius: 20px; font-size: 12px; color: var(--teal-dark); font-weight: 600; margin-bottom: 32px; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px; }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: blink 2s ease-in-out infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+        h1 { font-family: 'Syne', sans-serif; font-size: clamp(42px, 5.5vw, 68px); font-weight: 800; line-height: 1.04; letter-spacing: -2.5px; margin-bottom: 22px; color: var(--black); }
+        h1 .accent { color: var(--teal); }
+        .hero-sub { font-size: 17px; color: var(--muted); line-height: 1.75; max-width: 480px; margin-bottom: 40px; }
+        .hero-actions { display: flex; gap: 12px; margin-bottom: 52px; flex-wrap: wrap; }
+        .btn-primary { padding: 14px 28px; background: var(--teal); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+        .btn-primary:hover { background: var(--teal-dark); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,196,167,0.3); }
+        .btn-ghost { padding: 14px 28px; background: white; color: var(--text); border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all .2s; text-decoration: none; display: inline-block; }
+        .btn-ghost:hover { border-color: var(--border-strong); }
+        .hero-stats { display: flex; gap: 44px; padding-top: 44px; border-top: 1px solid var(--border); }
+        .stat-num { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800; color: var(--black); line-height: 1; }
+        .stat-num span { color: var(--teal); }
+        .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        /* MOCKUP */
+        .hero-right { padding-bottom: 80px; }
+        .mockup-wrap { background: white; border-radius: 20px; border: 1px solid var(--border); box-shadow: 0 32px 80px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); overflow: hidden; }
+        .mockup-topbar { padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+        .m-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .m-url { margin-left: 8px; flex: 1; background: white; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--light-muted); font-family: 'JetBrains Mono', monospace; }
+        .mockup-body { padding: 20px; }
+        .m-header { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--black); margin-bottom: 16px; }
+        .m-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+        .m-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+        .m-stat-label { font-size: 10px; color: var(--light-muted); font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+        .m-stat-val { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: var(--black); }
+        .m-stat-val.teal { color: var(--teal); }
+        .m-appts-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+        .m-appt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
+        .m-appt-color { width: 4px; height: 32px; border-radius: 2px; background: var(--teal); flex-shrink: 0; }
+        .m-appt-color.orange { background: #F59E0B; }
+        .m-appt-color.blue { background: #6366F1; }
+        .m-appt-name { font-size: 13px; font-weight: 600; color: var(--black); }
+        .m-appt-meta { font-size: 11px; color: var(--muted); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+        .m-appt-badge { margin-left: auto; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+        .m-appt-badge.confirmed { background: var(--teal-light); color: var(--teal-dark); }
+        .m-appt-badge.pending { background: #FEF3C7; color: #D97706; }
+        .m-ai-strip { margin-top: 12px; padding: 10px 14px; background: var(--teal-light); border: 1px solid var(--teal-border); border-radius: 10px; display: flex; align-items: center; gap: 10px; }
+        .ai-chip { background: var(--teal); color: white; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+        .ai-strip-text { font-size: 11px; color: var(--teal-dark); font-weight: 500; }
+        .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); margin-left: auto; flex-shrink: 0; animation: blink 1.5s ease-in-out infinite; }
+        /* LOGOS */
+        .logos-bar { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 32px 64px; background: white; display: flex; align-items: center; gap: 48px; overflow: hidden; }
+        .logos-label { font-size: 11px; color: var(--light-muted); white-space: nowrap; font-family: 'JetBrains Mono', monospace; letter-spacing: 1.5px; text-transform: uppercase; }
+        .logos-items { display: flex; gap: 40px; align-items: center; flex-wrap: wrap; }
+        .logo-item { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: var(--border-strong); letter-spacing: -0.3px; }
+        /* FEATURES */
+        .features { padding: 120px 64px; max-width: 1280px; margin: 0 auto; }
+        .section-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--teal-dark); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .section-tag::before { content: ''; width: 20px; height: 1.5px; background: var(--teal); }
+        .section-title { font-family: 'Syne', sans-serif; font-size: clamp(30px, 4vw, 46px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 14px; color: var(--black); }
+        .section-sub { font-size: 16px; color: var(--muted); max-width: 480px; margin-bottom: 60px; line-height: 1.7; }
+        .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .feat-card { background: white; border: 1.5px solid var(--border); border-radius: 16px; padding: 32px; transition: all .2s; }
+        .feat-card:hover { border-color: var(--teal-border); box-shadow: 0 8px 32px rgba(0,196,167,0.08); transform: translateY(-2px); }
+        .feat-icon-wrap { width: 44px; height: 44px; border-radius: 10px; background: var(--teal-light); border: 1px solid var(--teal-border); display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 18px; }
+        .feat-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--black); margin-bottom: 9px; }
+        .feat-desc { font-size: 13px; color: var(--muted); line-height: 1.75; }
+        /* HOW IT WORKS */
+        .how { padding: 100px 64px; background: white; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .how-inner { max-width: 1280px; margin: 0 auto; }
+        .how-steps { display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: var(--border); border-radius: 16px; overflow: hidden; margin-top: 60px; }
+        .how-step { background: white; padding: 32px 28px; }
+        .how-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--teal-dark); font-weight: 600; letter-spacing: 1px; margin-bottom: 14px; background: var(--teal-light); display: inline-block; padding: 3px 9px; border-radius: 20px; }
+        .how-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--black); margin-bottom: 8px; }
+        .how-desc { font-size: 13px; color: var(--muted); line-height: 1.7; }
+        /* CONTACT / PRICING */
+        .pricing { padding: 120px 64px; max-width: 1280px; margin: 0 auto; }
+        .contact-card { background: white; border: 1.5px solid var(--border); border-radius: 20px; overflow: hidden; }
+        .contact-card-top { padding: 44px 48px; border-bottom: 1px solid var(--border); }
+        .contact-features { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 48px; }
+        .cf-col { display: flex; flex-direction: column; gap: 14px; }
+        .cf-item { font-size: 14px; color: var(--text); display: flex; align-items: center; gap: 10px; }
+        .cf-check { color: var(--teal); font-weight: 700; font-size: 15px; flex-shrink: 0; }
+        .contact-card-bottom { padding: 36px 48px; background: var(--teal-light); display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+        .contact-tagline { font-size: 14px; color: var(--teal-dark); font-style: italic; line-height: 1.6; flex: 1; min-width: 220px; }
+        .btn-contact { padding: 14px 28px; background: var(--teal); color: white; text-decoration: none; border-radius: 10px; font-size: 15px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all .2s; white-space: nowrap; display: inline-block; }
+        .btn-contact:hover { background: var(--teal-dark); transform: translateY(-1px); }
+        .contact-note { font-size: 12px; color: var(--muted); width: 100%; margin-top: -20px; }
+        /* CTA */
+        .cta-wrap { padding: 0 64px 120px; max-width: 1280px; margin: 0 auto; }
+        .cta-box { background: var(--teal); border-radius: 24px; padding: 80px 72px; display: grid; grid-template-columns: 1fr auto; gap: 60px; align-items: center; position: relative; overflow: hidden; }
+        .cta-box::before { content: ''; position: absolute; right: -80px; top: -80px; width: 320px; height: 320px; border-radius: 50%; background: rgba(255,255,255,0.07); }
+        .cta-box::after { content: ''; position: absolute; right: 80px; bottom: -100px; width: 200px; height: 200px; border-radius: 50%; background: rgba(255,255,255,0.05); }
+        .cta-title { font-family: 'Syne', sans-serif; font-size: 42px; font-weight: 800; color: white; letter-spacing: -1.5px; line-height: 1.08; }
+        .cta-sub { font-size: 16px; color: rgba(255,255,255,0.7); margin-top: 12px; }
+        .cta-right { display: flex; flex-direction: column; gap: 12px; align-items: flex-end; position: relative; z-index: 1; }
+        .btn-cta-white { padding: 14px 28px; background: white; color: var(--teal-dark); border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; white-space: nowrap; transition: all .2s; text-decoration: none; display: inline-block; }
+        .btn-cta-white:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .cta-note { font-size: 13px; color: rgba(255,255,255,0.6); }
+        /* FOOTER */
+        footer { background: var(--black); padding: 64px 64px 40px; }
+        .footer-top { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
+        .footer-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+        .footer-brand-icon { width: 30px; height: 30px; background: var(--teal); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+        .footer-brand-text { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: white; }
+        .footer-tagline { font-size: 13px; color: rgba(255,255,255,0.35); line-height: 1.7; max-width: 240px; }
+        .footer-col-h { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; }
+        .footer-links-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+        .footer-links-list a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color .15s; }
+        .footer-links-list a:hover { color: white; }
+        .footer-bottom { border-top: 1px solid rgba(255,255,255,0.07); padding-top: 24px; display: flex; justify-content: space-between; align-items: center; }
+        .footer-copy { font-size: 12px; color: rgba(255,255,255,0.25); font-family: 'JetBrains Mono', monospace; }
+        /* RESPONSIVE */
+        @media (max-width: 1100px) {
+          nav { padding: 0 30px; }
+          .hero { grid-template-columns: 1fr; padding: 60px 30px 0; }
+          .hero-right { display: none; }
           .nav-links { display: none; }
-          .problem-grid { grid-template-columns: 1fr; }
+          .features { padding: 80px 30px; }
+          .how { padding: 80px 30px; }
+          .pricing { padding: 80px 30px; }
+          .cta-wrap { padding: 0 30px 80px; }
+          .logos-bar { padding: 28px 30px; }
+          footer { padding: 48px 30px 32px; }
+        }
+        @media (max-width: 800px) {
           .features-grid { grid-template-columns: 1fr; }
-          .steps { grid-template-columns: 1fr; }
-          .bilingual-card { grid-template-columns: 1fr; }
-          .pricing-grid { grid-template-columns: 1fr; }
-          footer { flex-direction: column; text-align: center; }
+          .how-steps { grid-template-columns: 1fr; border-radius: 0; }
+          .contact-features { grid-template-columns: 1fr; }
+          .footer-top { grid-template-columns: 1fr 1fr; }
+          .cta-box { grid-template-columns: 1fr; padding: 48px 32px; }
+          .cta-right { align-items: flex-start; }
+          .cta-title { font-size: 32px; }
+          h1 { letter-spacing: -1.5px; }
+          .hero-stats { flex-wrap: wrap; gap: 24px; }
         }
       `}</style>
 
-      {/* ── NAV ── */}
+      {/* NAV */}
       <nav>
-        <a href="/" className="nav-logo">Dent<span>Plus</span></a>
+        <a href="/" className="nav-logo">
+          <div className="nav-logo-icon">🦷</div>
+          <div className="nav-logo-text">DentPlus</div>
+        </a>
         <div className="nav-links">
           <a href="#features">Features</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="#pricing">Pricing</a>
-          <a href="/clinic/demo">Live demo</a>
+          <a href="#how">How it works</a>
+          <a href="https://demo.dentplus.ca" target="_blank" rel="noreferrer">Demo</a>
+          <a href="#contact">Pricing</a>
         </div>
-        <a href="/clinic/demo/portal" className="nav-cta">Try the demo</a>
+        <div className="nav-right">
+          <a href="/clinic/demo" className="btn-nav-ghost">Sign in</a>
+          <a href="mailto:hello@dentplus.ca" className="btn-nav-solid">Contact us →</a>
+        </div>
       </nav>
 
-      {/* ── HERO ── */}
+      {/* HERO */}
       <section className="hero">
-        <div className="hero-glow" />
-        <div className="hero-grid" />
-        <div className="hero-badge">
-          <span className="hero-badge-dot" />
-          Now available in Québec — FR/EN bilingual
+        <div className="hero-left">
+          <div className="hero-badge">
+            <div className="badge-dot"></div>
+            AI Agent · Online 24 / 7
+          </div>
+          <h1>
+            The dental practice<br />that never <span className="accent">sleeps</span>
+          </h1>
+          <p className="hero-sub">
+            Replace your front desk with an AI agent that books, reschedules, and reminds patients — in French and English — around the clock.
+          </p>
+          <div className="hero-actions">
+            <a href="mailto:hello@dentplus.ca" className="btn-primary">Contact us →</a>
+            <a href="https://demo.dentplus.ca" className="btn-ghost" target="_blank" rel="noreferrer">See live demo →</a>
+          </div>
+          <div className="hero-stats">
+            <div>
+              <div className="stat-num">24<span>/7</span></div>
+              <div className="stat-label">AI availability</div>
+            </div>
+            <div>
+              <div className="stat-num">~<span>$14</span></div>
+              <div className="stat-label">AI cost / month</div>
+            </div>
+            <div>
+              <div className="stat-num">FR<span> / EN</span></div>
+              <div className="stat-label">Bilingual</div>
+            </div>
+          </div>
         </div>
-        <h1>Your dental practice,<br /><em>running itself.</em></h1>
-        <p className="hero-sub">
-          DentPlus replaces your front desk with an AI agent that handles
-          <strong> booking, cancellations, waitlists, intake, and reminders</strong> —
-          24/7, without lifting a finger.
-        </p>
-        <div className="hero-actions">
-          <a href="/clinic/demo" className="btn-primary">See it live →</a>
-          <a href="#pricing" className="btn-secondary">View pricing</a>
-        </div>
-        <div className="hero-stats">
-          <div>
-            <div className="hero-stat-val">24<span>/7</span></div>
-            <div className="hero-stat-label">AI receptionist uptime</div>
-          </div>
-          <div>
-            <div className="hero-stat-val">2<span>min</span></div>
-            <div className="hero-stat-label">Avg booking time</div>
-          </div>
-          <div>
-            <div className="hero-stat-val">0<span> staff</span></div>
-            <div className="hero-stat-label">Needed for front desk</div>
-          </div>
-          <div>
-            <div className="hero-stat-val">FR<span>/EN</span></div>
-            <div className="hero-stat-label">Fully bilingual</div>
+
+        <div className="hero-right">
+          <div className="mockup-wrap">
+            <div className="mockup-topbar">
+              <div className="m-dot" style={{background:'#FF5F57'}}></div>
+              <div className="m-dot" style={{background:'#FFBD2E'}}></div>
+              <div className="m-dot" style={{background:'#28CA41'}}></div>
+              <div className="m-url">demo.dentplus.ca/dashboard</div>
+            </div>
+            <div className="mockup-body">
+              <div className="m-header">Friday, March 27</div>
+              <div className="m-stats">
+                <div className="m-stat">
+                  <div className="m-stat-label">Today</div>
+                  <div className="m-stat-val teal">8</div>
+                </div>
+                <div className="m-stat">
+                  <div className="m-stat-label">Confirmed</div>
+                  <div className="m-stat-val">6</div>
+                </div>
+                <div className="m-stat">
+                  <div className="m-stat-label">Waitlist</div>
+                  <div className="m-stat-val">3</div>
+                </div>
+              </div>
+              <div className="m-appts-label">Appointments</div>
+              <div className="m-appt">
+                <div className="m-appt-color"></div>
+                <div>
+                  <div className="m-appt-name">Marie Tremblay</div>
+                  <div className="m-appt-meta">10:00 · Cleaning · Dr. Villalta</div>
+                </div>
+                <div className="m-appt-badge confirmed">✓ Confirmed</div>
+              </div>
+              <div className="m-appt">
+                <div className="m-appt-color orange"></div>
+                <div>
+                  <div className="m-appt-name">Jean-François L.</div>
+                  <div className="m-appt-meta">11:30 · Checkup · Dr. Haim</div>
+                </div>
+                <div className="m-appt-badge pending">Pending</div>
+              </div>
+              <div className="m-appt">
+                <div className="m-appt-color blue"></div>
+                <div>
+                  <div className="m-appt-name">Sarah Johnson</div>
+                  <div className="m-appt-meta">14:00 · Filling · Dr. Villalta</div>
+                </div>
+                <div className="m-appt-badge confirmed">✓ Confirmed</div>
+              </div>
+              <div className="m-ai-strip">
+                <div className="ai-chip">AI</div>
+                <div className="ai-strip-text">Concierge agent — 3 bookings today</div>
+                <div className="ai-dot"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── PROBLEM ── */}
-      <div style={{ padding: '0 24px 100px', maxWidth: '1100px', margin: '0 auto' }}>
-        <div className="section-label">The problem</div>
-        <h2>Dentrix was built in 1989.</h2>
-        <p className="section-sub">The most-used dental software in Canada runs locally on office computers, has no cloud, no AI, and no patient portal. It hasn't fundamentally changed in 35 years.</p>
-        <div className="problem-grid">
-          <div className="problem-card">
-            <div className="problem-year">1989</div>
-            <div className="problem-title">Dentrix — The incumbent</div>
-            <div className="problem-desc">Local install. Windows-only. Manual booking. Phone-only intake. No patient portal. No AI. No automation. Front desk required 9–5.</div>
-            <div className="problem-tags">
-              <span className="problem-tag">Local install</span>
-              <span className="problem-tag">Phone booking only</span>
-              <span className="problem-tag">Manual reminders</span>
-              <span className="problem-tag">English only</span>
-              <span className="problem-tag">No patient portal</span>
-            </div>
-          </div>
-          <div className="problem-card highlight">
-            <div className="problem-year">2026</div>
-            <div className="problem-title">DentPlus — Built for now</div>
-            <div className="problem-desc">Cloud-native. AI booking agent. Automated waitlist. Digital intake. Patient portal. Bilingual. Reminders sent automatically. Zero front desk required.</div>
-            <div className="problem-tags">
-              <span className="problem-tag good">Cloud + AI</span>
-              <span className="problem-tag good">24/7 booking</span>
-              <span className="problem-tag good">Auto reminders</span>
-              <span className="problem-tag good">FR/EN bilingual</span>
-              <span className="problem-tag good">Patient portal</span>
-            </div>
-          </div>
+      {/* LOGOS */}
+      <div className="logos-bar">
+        <div className="logos-label">Insurance coverage supported</div>
+        <div className="logos-items">
+          <div className="logo-item">Sun Life</div>
+          <div className="logo-item">Manulife</div>
+          <div className="logo-item">Desjardins</div>
+          <div className="logo-item">Great-West</div>
+          <div className="logo-item">Blue Cross</div>
+          <div className="logo-item">Telus Health</div>
         </div>
       </div>
 
-      {/* ── FEATURES ── */}
-      <section className="features-section" id="features">
-        <div className="features-inner">
-          <div className="section-label">What's included</div>
-          <h2>Everything your front desk does, automated.</h2>
-          <p className="section-sub">One platform. No integrations. No training. Ready in 10 minutes.</p>
-          <div className="features-grid">
+      {/* FEATURES */}
+      <section className="features" id="features">
+        <div className="section-tag">Platform features</div>
+        <h2 className="section-title">Everything a clinic needs.<br />Nothing it doesn&apos;t.</h2>
+        <p className="section-sub">Built for Canadian dental practices. Bilingual, PIPEDA-compliant, and AI-native from day one.</p>
+        <div className="features-grid">
+          {[
+            { icon: '🤖', title: 'AI Booking Agent', desc: 'Patients book, reschedule, and cancel 24/7 through a conversational AI that understands dental terminology in French and English.' },
+            { icon: '📱', title: 'SMS Reminders', desc: 'Bilingual appointment reminders via Twilio. Patients reply YES or NO — confirmations update the schedule in real time, automatically.' },
+            { icon: '🔄', title: 'Insurance-Aware Recall', desc: 'Finds patients due for cleanings and contacts them — mentioning their Sun Life or Manulife coverage as a reason to book now.' },
+            { icon: '📋', title: 'Digital Intake', desc: '7-section patient intake with e-signature. Medical history, dental history, insurance, and consent — fully digital and PIPEDA-isolated.' },
+            { icon: '🗓', title: 'Smart Scheduling', desc: 'Provider schedules, lunch breaks, vacation blocks, and stat holidays. Role-based visibility — dentists see only their own appointments.' },
+            { icon: '🏥', title: 'Your Branded Subdomain', desc: 'Every clinic gets yourclinic.dentplus.ca. QR-gated registration, staff approval, and a white-label patient experience out of the box.' },
+          ].map(f => (
+            <div key={f.title} className="feat-card">
+              <div className="feat-icon-wrap">{f.icon}</div>
+              <div className="feat-title">{f.title}</div>
+              <div className="feat-desc">{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <div className="how" id="how">
+        <div className="how-inner">
+          <div className="section-tag">How it works</div>
+          <h2 className="section-title">Live in under an hour.</h2>
+          <div className="how-steps">
             {[
-              { icon: '🤖', title: 'AI Booking Agent', desc: 'Patients chat in French or English. The AI books, cancels, and reschedules appointments around the clock — no human needed.' },
-              { icon: '⚡', title: 'Smart Waitlist', desc: 'When a cancellation happens, the Matchmaker automatically finds the best-fit patient from the waitlist and offers them the slot.' },
-              { icon: '📋', title: 'Digital Intake', desc: 'Patients complete their medical history, dental history, insurance, and consent forms online before they even arrive.' },
-              { icon: '🔔', title: 'Automated Reminders', desc: '48h and 24h reminders sent automatically by SMS or email. Patients confirm attendance with one tap.' },
-              { icon: '🦷', title: 'Treatment Notes', desc: 'Dentists write clinical notes directly on the appointment. Notes attach to the visit and are available to the patient in their portal.' },
-              { icon: '→', title: 'Specialist Referrals', desc: 'Send referrals to specialists in seconds. Every referral to a non-DentPlus clinic generates a growth lead automatically.' },
-            ].map(f => (
-              <div key={f.title} className="feature-card">
-                <div className="feature-icon">{f.icon}</div>
-                <div className="feature-title">{f.title}</div>
-                <div className="feature-desc">{f.desc}</div>
+              { n: '01', title: 'Sign up your clinic', desc: 'Self-serve onboarding. Enter clinic info, set provider schedules, and get your branded subdomain in minutes.' },
+              { n: '02', title: 'Share the QR code', desc: 'Patients scan, register, and complete digital intake from their phone. Staff approves with one click.' },
+              { n: '03', title: 'AI handles bookings', desc: 'The AI concierge books appointments, manages the waitlist, and sends bilingual SMS reminders automatically.' },
+              { n: '04', title: 'You run the clinic', desc: 'Full dashboard for your team. Dentists, hygienists, and receptionists each see exactly what they need.' },
+            ].map(s => (
+              <div key={s.n} className="how-step">
+                <div className="how-num">{s.n}</div>
+                <div className="how-title">{s.title}</div>
+                <div className="how-desc">{s.desc}</div>
               </div>
             ))}
           </div>
         </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <div className="section" id="how-it-works">
-        <div className="section-label">How it works</div>
-        <h2>Up and running in 10 minutes.</h2>
-        <p className="section-sub">No migration, no training, no IT department required.</p>
-        <div className="steps">
-          {[
-            { n: '01', title: 'Create your clinic', desc: 'Sign up, enter your clinic name, and invite your staff. Your AI agent is live immediately at yourclinic.dentplus.ca.' },
-            { n: '02', title: 'Patients book themselves', desc: 'Share your clinic link. Patients chat with the AI to book, cancel, or join the waitlist — 24/7, in their language.' },
-            { n: '03', title: 'You just treat patients', desc: 'Check your schedule each morning. Every appointment is confirmed, every intake form is filled. Just walk in and work.' },
-          ].map(s => (
-            <div key={s.n} className="step">
-              <div className="step-num">{s.n}</div>
-              <div className="step-title">{s.title}</div>
-              <div className="step-desc">{s.desc}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* ── BILINGUAL ── */}
-      <div className="bilingual-section">
-        <div className="bilingual-card">
+      {/* CONTACT / PRICING */}
+      <section className="pricing" id="contact">
+        <div className="section-tag">Pricing</div>
+        <h2 className="section-title">One clinic.<br />One price. Everything included.</h2>
+        <p className="section-sub">DentPlus replaces your front desk — AI booking, SMS reminders, recall, scheduling, patient charts, digital intake, and more. Contact us to get started.</p>
+        <div className="contact-card">
+          <div className="contact-card-top">
+            <div className="contact-features">
+              <div className="cf-col">
+                {['AI booking agent (24/7, FR/EN)', 'SMS reminders + YES/NO replies', 'Insurance-aware recall system', 'Digital patient intake + e-signature'].map(f => (
+                  <div key={f} className="cf-item"><span className="cf-check">✓</span> {f}</div>
+                ))}
+              </div>
+              <div className="cf-col">
+                {['Full scheduling with block management', 'Treatment planning + invoicing', 'Branded subdomain + patient portal', 'Unlimited providers + staff roles'].map(f => (
+                  <div key={f} className="cf-item"><span className="cf-check">✓</span> {f}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="contact-card-bottom">
+            <div className="contact-tagline">&ldquo;A front desk that never sleeps — for less than you&apos;d pay a part-time receptionist.&rdquo;</div>
+            <a href="mailto:hello@dentplus.ca" className="btn-contact">Contact us for pricing →</a>
+            <div className="contact-note">We&apos;ll set up a demo and walk you through everything.</div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <div className="cta-wrap">
+        <div className="cta-box">
           <div>
-            <div className="section-label">Built for Québec</div>
-            <h2>Fully bilingual.<br />French-first.</h2>
-            <p className="section-sub" style={{ marginBottom: '24px' }}>
-              DentPlus speaks both official languages natively. Patients choose their language, and the AI responds accordingly — no configuration needed. Law 25 and PIPEDA compliant.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              {['PIPEDA compliant', 'Loi 25 ready', 'Canadian data', 'FR/EN native'].map(tag => (
-                <span key={tag} style={{ padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500, background: 'rgba(14,165,233,.1)', color: '#0EA5E9', border: '1px solid rgba(14,165,233,.2)' }}>{tag}</span>
-              ))}
-            </div>
+            <div className="cta-title">A desk that<br />never sleeps.</div>
+            <div className="cta-sub">Everything included. One clinic, one price. Contact us to get started.</div>
           </div>
-          <div className="bilingual-chat">
-            <div className="chat-lang">🇫🇷 Français</div>
-            <div className="chat-msg bot">Bonjour! Je suis l'assistante de Clinique Dentaire Montréal. Comment puis-je vous aider aujourd'hui?</div>
-            <div className="chat-msg user">Je voudrais prendre un rendez-vous pour un nettoyage.</div>
-            <div className="chat-msg bot">Bien sûr! Avez-vous une préférence de date ou d'heure pour votre nettoyage?</div>
-            <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />
-            <div className="chat-lang">🇨🇦 English</div>
-            <div className="chat-msg bot">Hi! I'm the assistant for Clinique Dentaire Montréal. How can I help you today?</div>
-            <div className="chat-msg user">I'd like to book a cleaning.</div>
-            <div className="chat-msg bot">Of course! Do you have a preferred date or time for your cleaning?</div>
+          <div className="cta-right">
+            <a href="mailto:hello@dentplus.ca" className="btn-cta-white">Contact us for pricing →</a>
+            <div className="cta-note">We&apos;ll set up a demo and walk you through everything.</div>
           </div>
         </div>
       </div>
 
-      {/* ── PRICING ── */}
-      <section className="pricing-section" id="pricing">
-        <div className="pricing-inner">
-          <div className="section-label">Pricing</div>
-          <h2>Simple, predictable pricing.</h2>
-          <p className="section-sub" style={{ margin: '0 auto 0', textAlign: 'center' }}>Start free. Upgrade when you're ready. No setup fees, no contracts.</p>
-          <div className="pricing-grid">
-            <div className="pricing-card">
-              <div className="pricing-plan">Starter</div>
-              <div className="pricing-price"><sup>$</sup>99</div>
-              <div className="pricing-period">per month · CAD</div>
-              <ul className="pricing-features">
-                <li>AI booking agent</li>
-                <li>Patient portal</li>
-                <li>Digital intake forms</li>
-                <li>Automated reminders</li>
-                <li>Up to 3 staff accounts</li>
-                <li>Email support</li>
-              </ul>
-              <a href="/clinic/demo" className="pricing-btn">Start free trial</a>
-            </div>
-            <div className="pricing-card featured">
-              <div className="pricing-badge">Most popular</div>
-              <div className="pricing-plan">Pro</div>
-              <div className="pricing-price"><sup>$</sup>249</div>
-              <div className="pricing-period">per month · CAD</div>
-              <ul className="pricing-features">
-                <li>Everything in Starter</li>
-                <li>Smart waitlist + Matchmaker</li>
-                <li>Treatment notes</li>
-                <li>Specialist referrals</li>
-                <li>Unlimited staff accounts</li>
-                <li>SMS reminders (Twilio)</li>
-                <li>Priority support</li>
-              </ul>
-              <a href="/clinic/demo" className="pricing-btn">Start free trial</a>
-            </div>
-            <div className="pricing-card">
-              <div className="pricing-plan">Enterprise</div>
-              <div className="pricing-price"><sup>$</sup>499</div>
-              <div className="pricing-period">per month · CAD</div>
-              <ul className="pricing-features">
-                <li>Everything in Pro</li>
-                <li>Multi-location support</li>
-                <li>X-ray viewer</li>
-                <li>Custom subdomain</li>
-                <li>SLA guarantee</li>
-                <li>Dedicated onboarding</li>
-              </ul>
-              <a href="mailto:hello@dentplus.ca" className="pricing-btn">Contact us</a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA ── */}
-      <section className="cta-section">
-        <div className="cta-glow" />
-        <div className="cta-inner">
-          <div className="cta-pipeda">🇨🇦 Canadian data residency · PIPEDA compliant</div>
-          <h2>Ready to run your practice on autopilot?</h2>
-          <p className="section-sub" style={{ margin: '16px auto 36px', textAlign: 'center' }}>
-            Join the waitlist. First 10 clinics get 3 months free.
-          </p>
-          <div className="hero-actions">
-            <a href="/clinic/demo" className="btn-primary">Try the live demo →</a>
-            <a href="mailto:hello@dentplus.ca" className="btn-secondary">Book a call</a>
-          </div>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
+      {/* FOOTER */}
       <footer>
-        <a href="/" className="footer-logo">Dent<span>Plus</span></a>
-        <div className="footer-links">
-          <a href="/clinic/demo">Demo</a>
-          <a href="#pricing">Pricing</a>
-          <a href="mailto:hello@dentplus.ca">Contact</a>
-          <a href="/clinic/demo/portal">Patient portal</a>
+        <div className="footer-top">
+          <div>
+            <div className="footer-brand">
+              <div className="footer-brand-icon">🦷</div>
+              <div className="footer-brand-text">DentPlus</div>
+            </div>
+            <div className="footer-tagline">AI-powered dental practice management for Canadian clinics. Bilingual, PIPEDA-compliant, cloud-native.</div>
+          </div>
+          <div>
+            <div className="footer-col-h">Product</div>
+            <ul className="footer-links-list">
+              <li><a href="#features">Features</a></li>
+              <li><a href="#how">How it works</a></li>
+              <li><a href="https://demo.dentplus.ca" target="_blank" rel="noreferrer">Demo</a></li>
+              <li><a href="#contact">Pricing</a></li>
+            </ul>
+          </div>
+          <div>
+            <div className="footer-col-h">Company</div>
+            <ul className="footer-links-list">
+              <li><a href="mailto:hello@dentplus.ca">Contact</a></li>
+              <li><a href="/superadmin">Admin</a></li>
+            </ul>
+          </div>
+          <div>
+            <div className="footer-col-h">Legal</div>
+            <ul className="footer-links-list">
+              <li><a href="#">Privacy</a></li>
+              <li><a href="#">Terms</a></li>
+              <li><a href="#">PIPEDA</a></li>
+            </ul>
+          </div>
         </div>
-        <div className="footer-copy">© 2026 DentPlus · Montréal, QC · Built for Canadian dental clinics</div>
+        <div className="footer-bottom">
+          <div className="footer-copy">© 2026 DentPlus Inc. · Made in Canada 🍁</div>
+          <div className="footer-copy">dentplus.ca</div>
+        </div>
       </footer>
     </>
   )
