@@ -380,7 +380,7 @@ async function runTool(
           // ── PATH A: Specific provider requested — enforce their schedule ──
           const { data: schedule } = await db
             .from('provider_schedules')
-            .select('start_time, end_time')
+            .select('start_time, end_time, lunch_start, lunch_end')
             .eq('staff_id', requestedProviderId)
             .eq('day_of_week', dayOfWeek)
             .eq('is_active', true)
@@ -414,6 +414,13 @@ async function runTool(
 
             if (slotStart <= new Date()) continue
 
+            // Skip if slot overlaps with lunch break
+            if ((schedule as any).lunch_start && (schedule as any).lunch_end) {
+              const ls = parseHour((schedule as any).lunch_start)
+              const le = parseHour((schedule as any).lunch_end)
+              if (hour < le && hour + durationHours > ls) continue
+            }
+
             if (!(await hasConflict(requestedProviderId, slotStart, slotEnd))) {
               slots.push({
                 datetime: slotStart.toISOString(),
@@ -442,7 +449,7 @@ async function runTool(
             for (const provider of roleProviders) {
               const { data: schedule } = await db
                 .from('provider_schedules')
-                .select('start_time, end_time')
+                .select('start_time, end_time, lunch_start, lunch_end')
                 .eq('staff_id', provider.id)
                 .eq('day_of_week', dayOfWeek)
                 .eq('is_active', true)
@@ -459,6 +466,13 @@ async function runTool(
 
               // Slot must fall within provider working hours
               if (hour < pStart || hour + durationHours > pEnd) continue
+
+              // Skip lunch break
+              if ((schedule as any).lunch_start && (schedule as any).lunch_end) {
+                const ls = parseHour((schedule as any).lunch_start)
+                const le = parseHour((schedule as any).lunch_end)
+                if (hour < le && hour + durationHours > ls) continue
+              }
 
               if (!(await hasConflict(provider.id, slotStart, slotEnd))) {
                 slots.push({
