@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       // Mark appointment as confirmed
       await db
         .from('appointments')
-        .update({ patient_confirmed: true, updated_at: new Date().toISOString() })
+        .update({ patient_confirmed: true })
         .eq('id', appt.id)
 
       // Log the confirmation
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
       // Cancel the appointment
       await db
         .from('appointments')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .update({ status: 'cancelled' })
         .eq('id', appt.id)
 
       // Log the cancellation
