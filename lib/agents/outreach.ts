@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { toE164 } from '@/lib/utils/phone'
 import { createClient } from '@supabase/supabase-js'
 import { audit } from '@/lib/audit'
 
@@ -199,7 +200,12 @@ export async function runOutreach(payload: OutreachPayload): Promise<OutreachRes
         throw new Error('No phone number on file for patient')
       }
 
-      const result = await sendSms(payload.patientPhone, messageText)
+      const e164Phone = toE164(payload.patientPhone)
+      if (!e164Phone) {
+        throw new Error(`Could not format phone number to E.164: ${payload.patientPhone}`)
+      }
+
+      const result = await sendSms(e164Phone, messageText)
       if (result) {
         messageSid = result.sid
       } else {

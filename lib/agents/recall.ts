@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { toE164 } from '@/lib/utils/phone'
 import { createClient } from '@supabase/supabase-js'
 import { getCoverageRule, checkRecallEligibility } from '@/lib/data/insurance-intervals'
 
@@ -306,10 +307,14 @@ export async function runRecall(
         errors++
         continue
       }
-      if (useChannel === 'sms' && !candidate.phone) {
-        results.push({ patientId: candidate.patientId, patientName: candidate.patientName, sent: false, channel: null, stubbed: false, error: 'No phone on file', messageText: '' })
-        errors++
-        continue
+      if (useChannel === 'sms') {
+        const e164 = toE164(candidate.phone)
+        if (!e164) {
+          results.push({ patientId: candidate.patientId, patientName: candidate.patientName, sent: false, channel: null, stubbed: false, error: `Invalid phone number: ${candidate.phone}`, messageText: '' })
+          errors++
+          continue
+        }
+        candidate.phone = e164 // normalize for sending
       }
 
       // Generate message
