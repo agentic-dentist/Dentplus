@@ -41,15 +41,31 @@ export default function LoginPage({
     if (authError) { setError('Invalid email or password.'); setLoading(false); return }
 
     const user = authData.user
-    const role = user?.user_metadata?.role
+    const metaRole = user?.user_metadata?.role
 
-    if (role === 'owner') {
-      router.push('/dashboard')
+    // Always check staff_accounts first — covers staff created before user_metadata.role was set
+    const { data: staffRow } = await supabase
+      .from('staff_accounts')
+      .select('role, clinic_id')
+      .eq('auth_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (staffRow) {
+      // Staff member — go to dashboard
+      router.push(`/clinic/${slug}/dashboard`)
       return
     }
 
-    if (['dentist', 'hygienist', 'receptionist', 'assistant'].includes(role)) {
-      router.push('/dashboard')
+    // Check clinic_owners table
+    const { data: ownerRow } = await supabase
+      .from('clinic_owners')
+      .select('clinic_id')
+      .eq('auth_id', user.id)
+      .maybeSingle()
+
+    if (ownerRow || metaRole === 'owner') {
+      router.push(`/clinic/${slug}/dashboard`)
       return
     }
 

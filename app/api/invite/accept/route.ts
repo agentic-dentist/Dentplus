@@ -40,7 +40,8 @@ export async function POST(request: Request) {
     const { data: authData, error: authError } = await db.auth.admin.createUser({
       email: normalizedEmail,
       password,
-      email_confirm: true
+      email_confirm: true,
+      user_metadata: { role: invite.role, full_name: invite.full_name || normalizedEmail.split('@')[0] }
     })
 
     if (authError || !authData.user) {
