@@ -43,6 +43,19 @@ export default function SchedulePage() {
   const [savingNote, setSavingNote]     = useState(false)
   const [noteSaved, setNoteSaved]       = useState(false)
 
+  // Cancel modal
+  const [cancelTarget, setCancelTarget]         = useState<Appointment | null>(null)
+  const [cancelling, setCancelling]             = useState(false)
+  const [cancelError, setCancelError]           = useState('')
+
+  // Reschedule modal
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null)
+  const [slots, setSlots]                       = useState<{ startTime: string; endTime: string; display: string; date: string }[]>([])
+  const [loadingSlots, setLoadingSlots]         = useState(false)
+  const [selectedSlot, setSelectedSlot]         = useState<{ startTime: string; endTime: string; display: string; date: string } | null>(null)
+  const [rescheduling, setRescheduling]         = useState(false)
+  const [rescheduleError, setRescheduleError]   = useState('')
+
   const supabase = createClient()
 
   const getDay      = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x }
@@ -120,6 +133,67 @@ export default function SchedulePage() {
   }
 
   const closePanel = () => { setSelectedApt(null); setAptNotes([]) }
+
+  // ── Cancel / Reschedule ───────────────────────────────────────────────────
+  const openCancelModal = () => {
+    if (!selectedApt) return
+    setCancelTarget(selectedApt)
+    setCancelError('')
+  }
+
+  const confirmCancel = async () => {
+    if (!cancelTarget) return
+    setCancelling(true)
+    setCancelError('')
+    try {
+      const res = await fetch(`/api/appointments/${cancelTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', clinicId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCancelError(data.error || 'Failed to cancel'); setCancelling(false); return }
+      setAppointments(prev => prev.filter(a => a.id !== cancelTarget.id))
+      setCancelTarget(null)
+      closePanel()
+    } catch { setCancelError('Something went wrong') }
+    setCancelling(false)
+  }
+
+  const openRescheduleModal = async () => {
+    if (!selectedApt) return
+    setRescheduleTarget(selectedApt)
+    setSelectedSlot(null)
+    setRescheduleError('')
+    setSlots([])
+    setLoadingSlots(true)
+    if (!selectedApt.provider_id) { setLoadingSlots(false); return }
+    const res = await fetch(`/api/appointments/slots?clinicId=${clinicId}&providerId=${selectedApt.provider_id}&duration=60&excludeAppointmentId=${selectedApt.id}`)
+    const data = await res.json()
+    setSlots(data.slots || [])
+    setLoadingSlots(false)
+  }
+
+  const confirmReschedule = async () => {
+    if (!rescheduleTarget || !selectedSlot) return
+    setRescheduling(true)
+    setRescheduleError('')
+    try {
+      const res = await fetch(`/api/appointments/${rescheduleTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reschedule', clinicId, startTime: selectedSlot.startTime, endTime: selectedSlot.endTime }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRescheduleError(data.error || 'Failed to reschedule'); setRescheduling(false); return }
+      setAppointments(prev => prev.map(a =>
+        a.id === rescheduleTarget.id ? { ...a, start_time: selectedSlot.startTime, end_time: selectedSlot.endTime } : a
+      ))
+      setRescheduleTarget(null)
+      closePanel()
+    } catch { setRescheduleError('Something went wrong') }
+    setRescheduling(false)
+  }
 
   const saveNote = async () => {
     if (!selectedApt || !note.findings.trim()) return
@@ -237,6 +311,41 @@ export default function SchedulePage() {
         .save-note-btn{padding:10px 20px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;transition:background .15s}
         .save-note-btn.saved{background:#059669}
         .save-note-btn:disabled{opacity:.5;cursor:not-allowed}
+
+        /* Action buttons in panel footer */
+        .apt-action-row{display:flex;gap:8px;margin-bottom:0}
+        .btn-reschedule{padding:9px 16px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:white;color:#334155;cursor:pointer;transition:all .15s;font-weight:500}
+        .btn-reschedule:hover{border-color:#0EA5E9;color:#0EA5E9}
+        .btn-cancel-appt{padding:9px 16px;border:1.5px solid #FECACA;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:#FEF2F2;color:#DC2626;cursor:pointer;transition:all .15s;font-weight:500}
+        .btn-cancel-appt:hover{background:#FEE2E2}
+
+        /* Modals */
+        .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:100;display:flex;align-items:center;justify-content:center;animation:mfade .15s ease}
+        @keyframes mfade{from{opacity:0}to{opacity:1}}
+        .modal-box{background:white;border-radius:16px;padding:28px;width:480px;max-width:calc(100vw - 48px);box-shadow:0 24px 60px rgba(0,0,0,0.2);animation:mup .18s ease}
+        .modal-box.wide{width:560px}
+        @keyframes mup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .modal-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0F172A;margin-bottom:6px}
+        .modal-sub{font-size:13px;color:#64748B;margin-bottom:20px;line-height:1.5}
+        .modal-appt-card{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:20px}
+        .modal-appt-date{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:2px}
+        .modal-appt-meta{font-size:12px;color:#94A3B8}
+        .modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:18px;border-top:1px solid #F1F5F9}
+        .btn-modal-cancel{padding:9px 18px;background:none;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;color:#64748B;cursor:pointer}
+        .btn-modal-cancel:hover{border-color:#CBD5E1}
+        .btn-modal-confirm{padding:9px 20px;background:#DC2626;color:white;border:none;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:500}
+        .btn-modal-confirm:disabled{opacity:.5;cursor:not-allowed}
+        .btn-modal-primary{padding:9px 20px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:500}
+        .btn-modal-primary:disabled{opacity:.5;cursor:not-allowed}
+        .slot-scroll{max-height:300px;overflow-y:auto;padding-right:4px}
+        .slot-group{margin-bottom:14px}
+        .slot-group-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:8px}
+        .slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .slot-btn{padding:8px 6px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;color:#334155;background:white;cursor:pointer;text-align:center;transition:all .12s;line-height:1.3}
+        .slot-btn:hover{border-color:#0EA5E9;color:#0EA5E9;background:#F0F9FF}
+        .slot-btn.selected{border-color:#0EA5E9;background:#0EA5E9;color:white;font-weight:500}
+        .slot-loading{font-size:13px;color:#94A3B8;padding:24px 0;text-align:center}
+        .no-slots{font-size:13px;color:#CBD5E1;padding:24px 0;text-align:center}
       `}</style>
 
       <div className="sch-header">
@@ -427,19 +536,102 @@ export default function SchedulePage() {
               )}
             </div>
 
-            {canWriteNotes && (
-              <div className="apt-panel-footer">
-                <label className="private-toggle">
-                  <input type="checkbox" checked={note.isPrivate} onChange={e => setNote(p => ({ ...p, isPrivate: e.target.checked }))} />
-                  Mark as private
-                </label>
-                <button className={`save-note-btn ${noteSaved ? 'saved' : ''}`} onClick={saveNote} disabled={savingNote || !note.findings.trim()}>
-                  {savingNote ? 'Saving...' : noteSaved ? '✓ Note saved' : 'Save visit note'}
-                </button>
+            <div className="apt-panel-footer" style={{ flexDirection: 'column', gap: 10 }}>
+              {/* Cancel / Reschedule — all roles */}
+              <div className="apt-action-row">
+                <button className="btn-reschedule" onClick={openRescheduleModal}>⟳ Reschedule</button>
+                <button className="btn-cancel-appt" onClick={openCancelModal}>✕ Cancel appointment</button>
               </div>
-            )}
+              {/* Save note — clinical roles only */}
+              {canWriteNotes && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingTop: 10, borderTop: '1px solid #F1F5F9' }}>
+                  <label className="private-toggle">
+                    <input type="checkbox" checked={note.isPrivate} onChange={e => setNote(p => ({ ...p, isPrivate: e.target.checked }))} />
+                    Mark as private
+                  </label>
+                  <button className={`save-note-btn ${noteSaved ? 'saved' : ''}`} onClick={saveNote} disabled={savingNote || !note.findings.trim()}>
+                    {savingNote ? 'Saving...' : noteSaved ? '✓ Note saved' : 'Save visit note'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </>
+      )}
+
+      {/* ── Cancel modal ── */}
+      {cancelTarget && (
+        <div className="modal-backdrop" onClick={() => setCancelTarget(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Cancel appointment</div>
+            <div className="modal-sub">This cannot be undone. The slot will open up for other patients.</div>
+            <div className="modal-appt-card">
+              <div className="modal-appt-date">{patientName}</div>
+              <div className="modal-appt-meta">
+                {new Date(cancelTarget.start_time).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })}
+                {' · '}{cancelTarget.appointment_type}
+              </div>
+            </div>
+            {cancelError && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>{cancelError}</div>}
+            <div className="modal-footer">
+              <button className="btn-modal-cancel" onClick={() => setCancelTarget(null)}>Keep appointment</button>
+              <button className="btn-modal-confirm" onClick={confirmCancel} disabled={cancelling}>
+                {cancelling ? 'Cancelling...' : 'Yes, cancel it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reschedule modal ── */}
+      {rescheduleTarget && (
+        <div className="modal-backdrop" onClick={() => setRescheduleTarget(null)}>
+          <div className="modal-box wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Reschedule appointment</div>
+            <div className="modal-sub">
+              Pick a new slot for {patientName} — {rescheduleTarget.appointment_type}.
+            </div>
+            <div className="modal-appt-card">
+              <div className="modal-appt-date">
+                Current: {new Date(rescheduleTarget.start_time).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Toronto' })}
+              </div>
+              <div className="modal-appt-meta">{rescheduleTarget.provider_id ? 'Same provider will be kept' : 'Unassigned provider'}</div>
+            </div>
+            <div className="slot-scroll">
+              {loadingSlots ? (
+                <div className="slot-loading">Finding available slots...</div>
+              ) : slots.length === 0 ? (
+                <div className="no-slots">No available slots in the next 60 days.</div>
+              ) : (
+                Object.entries(
+                  slots.reduce((acc, s) => { (acc[s.date] = acc[s.date] || []).push(s); return acc }, {} as Record<string, typeof slots>)
+                ).map(([date, daySlots]) => (
+                  <div key={date} className="slot-group">
+                    <div className="slot-group-label">{date}</div>
+                    <div className="slot-grid">
+                      {daySlots.map(s => (
+                        <button
+                          key={s.startTime}
+                          className={`slot-btn ${selectedSlot?.startTime === s.startTime ? 'selected' : ''}`}
+                          onClick={() => setSelectedSlot(s)}
+                        >
+                          {new Date(s.startTime).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Toronto' })}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {rescheduleError && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{rescheduleError}</div>}
+            <div className="modal-footer">
+              <button className="btn-modal-cancel" onClick={() => setRescheduleTarget(null)}>Cancel</button>
+              <button className="btn-modal-primary" onClick={confirmReschedule} disabled={!selectedSlot || rescheduling}>
+                {rescheduling ? 'Saving...' : 'Confirm reschedule'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
