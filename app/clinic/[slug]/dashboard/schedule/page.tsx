@@ -79,15 +79,26 @@ export default function SchedulePage() {
     ? selectedDay.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     : `${weekDays[0].toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })} — ${weekDays[6].toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}`
 
+  // Owner + receptionist see everyone. Dentist/hygienist see only themselves.
+  const canSeeAll = myRole === 'owner' || myRole === 'receptionist' || myRole === 'billing'
+
   useEffect(() => {
-    if (!clinicId) return
+    if (!clinicId || !myStaffId) return
     const load = async () => {
       const res  = await fetch(`/api/clinic/${clinicId}/providers`)
       const json = await res.json()
-      setProviders(json.providers || [])
+      const all: Provider[] = json.providers || []
+      if (canSeeAll) {
+        setProviders(all)
+      } else {
+        // Dentist / hygienist — restrict to their own column
+        const mine = all.filter(p => p.id === myStaffId)
+        setProviders(mine)
+        setActiveProvider(myStaffId)
+      }
     }
     load()
-  }, [clinicId])
+  }, [clinicId, myStaffId])
 
   useEffect(() => {
     const onFocus = () => { if (clinicId) loadApts(clinicId) }
@@ -105,10 +116,13 @@ export default function SchedulePage() {
       start = new Date(weekDays[0]); start.setHours(0, 0, 0, 0)
       end   = new Date(weekDays[6]); end.setHours(23, 59, 59, 999)
     }
-    const { data } = await supabase.from('appointments')
+    let query = supabase.from('appointments')
       .select('id, start_time, end_time, appointment_type, reason, status, booked_via, provider_id, patient_id, patient_confirmed, patients(full_name)')
       .eq('clinic_id', cid).eq('status', 'scheduled')
-      .gte('start_time', start.toISOString()).lte('start_time', end.toISOString()).order('start_time')
+      .gte('start_time', start.toISOString()).lte('start_time', end.toISOString())
+    // Dentist/hygienist only see their own appointments
+    if (!canSeeAll && myStaffId) query = query.eq('provider_id', myStaffId)
+    const { data } = await query.order('start_time')
     setAppointments(data || [])
     setLoading(false)
   }
@@ -379,7 +393,7 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      <div className="provider-tabs">
+      {canSeeAll && <div className="provider-tabs">
         <button className={`prov-tab ${activeProvider === 'all' ? 'active' : ''}`} onClick={() => switchProvider('all')}>
           All providers
         </button>
@@ -390,7 +404,7 @@ export default function SchedulePage() {
             {p.full_name}
           </button>
         ))}
-      </div>
+      </div>}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#CBD5E1', fontSize: 14 }}>Loading schedule...</div>
