@@ -56,6 +56,10 @@ export default function SchedulePage() {
   const [rescheduling, setRescheduling]         = useState(false)
   const [rescheduleError, setRescheduleError]   = useState('')
 
+  // Provider reassignment
+  const [reassigning, setReassigning]           = useState(false)
+  const [reassignSaved, setReassignSaved]       = useState(false)
+
   const supabase = createClient()
 
   const getDay      = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x }
@@ -232,6 +236,24 @@ export default function SchedulePage() {
     : ''
 
   const canWriteNotes = myRole === 'dentist' || myRole === 'hygienist' || myRole === 'owner'
+
+  const reassignProvider = async (providerId: string) => {
+    if (!selectedApt) return
+    setReassigning(true)
+    const { error } = await supabase
+      .from('appointments')
+      .update({ provider_id: providerId || null })
+      .eq('id', selectedApt.id)
+      .eq('clinic_id', clinicId)
+    if (!error) {
+      setAppointments(prev => prev.map(a =>
+        a.id === selectedApt.id ? { ...a, provider_id: providerId || null } : a
+      ))
+      setReassignSaved(true)
+      setTimeout(() => setReassignSaved(false), 3000)
+    }
+    setReassigning(false)
+  }
 
   const AptCard = ({ apt }: { apt: Appointment }) => {
     const color = TYPE_COLOR[apt.appointment_type] || '#94A3B8'
@@ -496,6 +518,30 @@ export default function SchedulePage() {
                   </div>
                 )}
               </div>
+
+              {/* Provider assignment — visible to owner/receptionist, useful for unassigned */}
+              {(myRole === 'owner' || myRole === 'receptionist' || myRole === 'dentist') && (
+                <div style={{ marginBottom: 20 }}>
+                  <div className="notes-section-title">
+                    Provider <div className="notes-divider" />
+                    {reassignSaved && <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✓ Saved</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select
+                      defaultValue={selectedApt.provider_id || ''}
+                      onChange={e => reassignProvider(e.target.value)}
+                      disabled={reassigning}
+                      style={{ flex: 1, padding: '8px 12px', border: '1.5px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#0F172A' }}
+                    >
+                      <option value="">Unassigned</option>
+                      {providers.map(p => (
+                        <option key={p.id} value={p.id}>{p.full_name} ({p.role})</option>
+                      ))}
+                    </select>
+                    {reassigning && <span style={{ fontSize: 12, color: '#94A3B8' }}>Saving...</span>}
+                  </div>
+                </div>
+              )}
 
               {canWriteNotes && (
                 <>
