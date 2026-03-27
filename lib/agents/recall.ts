@@ -45,8 +45,11 @@ export interface RecallRunSummary {
 
 export async function findRecallCandidates(
   clinicId: string,
-  db: ReturnType<typeof createClient>
 ): Promise<RecallCandidate[]> {
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 
   // Get all approved active patients
   const { data: patients } = await db
@@ -277,7 +280,7 @@ export async function runRecall(
   const bookingUrl  = `https://${clinicSlug}.dentplus.ca/book`
 
   // Find candidates
-  let candidates = await findRecallCandidates(clinicId, db)
+  let candidates = await findRecallCandidates(clinicId)
 
   // Filter to specific patients if manual trigger
   if (options.patientIds && options.patientIds.length > 0) {

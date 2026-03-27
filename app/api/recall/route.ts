@@ -2,11 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { runRecall, findRecallCandidates } from '@/lib/agents/recall'
 
-const db = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 // GET /api/recall?clinicId=X  — preview candidates without sending
 export async function GET(request: Request) {
   try {
@@ -14,9 +9,13 @@ export async function GET(request: Request) {
     const clinicId = searchParams.get('clinicId')
     if (!clinicId) return NextResponse.json({ error: 'Missing clinicId' }, { status: 400 })
 
-    const candidates = await findRecallCandidates(clinicId, db)
+    const candidates = await findRecallCandidates(clinicId)
 
     // Also get recent recall log
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90)
     const { data: recentLog } = await db
