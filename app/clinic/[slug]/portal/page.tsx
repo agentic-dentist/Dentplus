@@ -370,7 +370,7 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
     const res = await fetch('/api/treatment-plans', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ planId, clinicId, action: 'sign', signature: sig, signedByName: patient?.full_name })
+      body: JSON.stringify({ planId, clinicId, action: 'sign', signature: sig, signedByName: patientInfo?.full_name })
     })
     const data = await res.json()
     if (data.plan) setPlans(prev => prev.map(p => p.id === planId ? data.plan : p))
@@ -655,7 +655,7 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
                               const res = await fetch('/api/treatment-plans', {
                                 method: 'PATCH',
                                 headers: {'Content-Type':'application/json'},
-                                body: JSON.stringify({ planId: plan.id, clinicId: portalClinicId, action: 'sign', signature: sig, signedByName: patient?.full_name })
+                                body: JSON.stringify({ planId: plan.id, clinicId: portalClinicId, action: 'sign', signature: sig, signedByName: patientInfo?.full_name })
                               })
                               const d = await res.json()
                               if (d.plan) setPlans(prev => prev.map(p => p.id === plan.id ? d.plan : p))
