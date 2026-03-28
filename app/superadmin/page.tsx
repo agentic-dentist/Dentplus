@@ -100,12 +100,17 @@ export default function SuperAdminPage() {
   }
 
   const formatRelative = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime()
-    const days = Math.floor(diff / 86400000)
-    if (days === 0) return 'Today'
-    if (days === 1) return 'Yesterday'
-    if (days < 7)  return `${days}d ago`
-    return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
+    const eventDate = new Date(iso)
+    const now       = new Date()
+    const opts: Intl.DateTimeFormatOptions = { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }
+    const eventDay     = new Intl.DateTimeFormat('en-CA', opts).format(eventDate)
+    const todayDay     = new Intl.DateTimeFormat('en-CA', opts).format(now)
+    const yesterdayDay = new Intl.DateTimeFormat('en-CA', opts).format(new Date(now.getTime() - 86400000))
+    if (eventDay === todayDay)     return 'Today'
+    if (eventDay === yesterdayDay) return 'Yesterday'
+    const diff = Math.floor((now.getTime() - eventDate.getTime()) / 86400000)
+    if (diff < 7) return diff + 'd ago'
+    return eventDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', timeZone: 'America/Toronto' })
   }
 
   const filteredClinics = clinics.filter(c =>
