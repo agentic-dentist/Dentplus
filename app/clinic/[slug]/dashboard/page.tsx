@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const { clinicId, staffName } = useClinicUser()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading]           = useState(true)
-  const [stats, setStats]               = useState({ today: 0, ai_booked: 0, patients: 0 })
+  const [stats, setStats]               = useState({ today: 0, ai_booked: 0, patients: 0, pending: 0, waitlist: 0, recall: 0, outstanding: 0 })
   const [mounted, setMounted]           = useState(false)
   const supabase = createClient()
 
@@ -62,8 +62,17 @@ export default function DashboardPage() {
     const load = async () => {
       const today    = new Date(); today.setHours(0, 0, 0, 0)
       const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
 
-      const [{ data: apts }, { data: allApts }, { count }] = await Promise.all([
+      const [
+        { data: apts },
+        { data: allApts },
+        { count: patientCount },
+        { count: pendingCount },
+        { count: waitlistCount },
+        { count: recallCount },
+        { data: invoiceData },
+      ] = await Promise.all([
         supabase.from('appointments')
           .select('*, patients(full_name, phone)')
           .eq('clinic_id', clinicId).eq('status', 'scheduled')
@@ -76,11 +85,34 @@ export default function DashboardPage() {
         supabase.from('patients')
           .select('*', { count: 'exact', head: true })
           .eq('clinic_id', clinicId).eq('is_active', true),
+        supabase.from('patient_accounts')
+          .select('*', { count: 'exact', head: true })
+          .eq('clinic_id', clinicId).eq('status', 'pending'),
+        supabase.from('waitlist')
+          .select('*', { count: 'exact', head: true })
+          .eq('clinic_id', clinicId).eq('status', 'waiting'),
+        supabase.from('patients')
+          .select('*', { count: 'exact', head: true })
+          .eq('clinic_id', clinicId).eq('is_active', true)
+          .lte('next_recall_date', tomorrow.toISOString()),
+        supabase.from('invoices')
+          .select('balance_due')
+          .eq('clinic_id', clinicId)
+          .in('status', ['sent', 'partial', 'overdue']),
       ])
 
       setAppointments(apts || [])
       const ai = (allApts || []).filter(a => a.booked_via === 'web_agent').length
-      setStats({ today: (apts || []).length, ai_booked: ai, patients: count || 0 })
+      const outstanding = (invoiceData || []).reduce((s, i) => s + (i.balance_due || 0), 0)
+      setStats({
+        today: (apts || []).length,
+        ai_booked: ai,
+        patients: patientCount || 0,
+        pending: pendingCount || 0,
+        waitlist: waitlistCount || 0,
+        recall: recallCount || 0,
+        outstanding,
+      })
       setLoading(false)
     }
     load()
@@ -110,23 +142,21 @@ export default function DashboardPage() {
   return (
     <>
       <style>{`
-        .ov-header       { margin-bottom:32px }
+        .ov-header       { margin-bottom:28px }
         .ov-greeting     { font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-.5px }
         .ov-date         { font-size:13px;color:#94A3B8;margin-top:4px;font-weight:500 }
-        .ov-stats        { display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px }
-        .ov-stat         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;padding:22px 24px;transition:box-shadow .15s }
-        .ov-stat:hover   { box-shadow:0 4px 20px rgba(0,0,0,.06) }
+        .ov-stats        { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px }
+        .ov-stat         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:16px 20px;transition:box-shadow .15s }
+        .ov-stat:hover   { box-shadow:0 2px 12px rgba(0,0,0,.05) }
         .ov-stat.primary { background:#4F46E5;border-color:#4F46E5 }
-        .ov-stat-icon    { width:36px;height:36px;border-radius:10px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:16px }
-        .ov-stat.primary .ov-stat-icon { background:rgba(255,255,255,.15) }
-        .ov-stat-label   { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:10px }
+        .ov-stat-label   { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:8px }
         .ov-stat.primary .ov-stat-label { color:rgba(255,255,255,.65) }
-        .ov-stat-val     { font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:#0F172A;line-height:1 }
+        .ov-stat-val     { font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#0F172A;line-height:1 }
         .ov-stat.primary .ov-stat-val   { color:#FFFFFF }
-        .ov-stat-sub     { font-size:12px;color:#94A3B8;margin-top:8px;font-weight:500 }
+        .ov-stat-sub     { font-size:11px;color:#94A3B8;margin-top:6px;font-weight:500 }
         .ov-stat.primary .ov-stat-sub   { color:rgba(255,255,255,.6) }
-        .ov-ai-pill      { display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.15);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:white;margin-top:8px }
-        .ov-ai-dot       { width:5px;height:5px;border-radius:50%;background:#00C4A7 }
+        .ov-ai-pill      { display:inline-flex;align-items:center;gap:5px;background:#EEF2FF;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;color:#4F46E5;margin-top:6px }
+        .ov-ai-dot       { width:5px;height:5px;border-radius:50%;background:#00C4A7;flex-shrink:0 }
         .ov-grid         { display:grid;grid-template-columns:1fr 320px;gap:16px }
         .ov-card         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden }
         .ov-card-head    { padding:16px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between }
@@ -168,32 +198,33 @@ export default function DashboardPage() {
         <div className="ov-date">{todayLabel}</div>
       </div>
 
-      {/* Stat cards */}
+      {/* Top stat cards — compact 4-col */}
       <div className="ov-stats">
         <div className="ov-stat primary">
-          <div className="ov-stat-icon">📅</div>
           <div className="ov-stat-label">Today&apos;s appointments</div>
           <div className="ov-stat-val">{loading ? '—' : todayCount}</div>
           <div className="ov-stat-sub">Scheduled for today</div>
         </div>
-
         <div className="ov-stat">
-          <div className="ov-stat-icon">⬡</div>
           <div className="ov-stat-label">Booked by AI</div>
           <div className="ov-stat-val">{aiCount}</div>
           {aiCount > 0
-            ? <div className="ov-ai-pill" style={{background:'#EEF2FF',color:'#4F46E5'}}><span className="ov-ai-dot" />AI powered</div>
-            : <div className="ov-stat-sub">Via web agent</div>
-          }
+            ? <div className="ov-ai-pill"><span className="ov-ai-dot" />AI powered</div>
+            : <div className="ov-stat-sub">Via web agent</div>}
         </div>
-
         <div className="ov-stat">
-          <div className="ov-stat-icon">◈</div>
           <div className="ov-stat-label">Total patients</div>
           <div className="ov-stat-val">{patientCount}</div>
-          <div className="ov-stat-sub">Active at this clinic</div>
+          <div className="ov-stat-sub">Active at clinic</div>
+        </div>
+        <div className="ov-stat">
+          <div className="ov-stat-label">Waitlist</div>
+          <div className="ov-stat-val">{stats.waitlist}</div>
+          <div className="ov-stat-sub">Waiting for slot</div>
         </div>
       </div>
+
+
 
       {/* Main grid */}
       <div className="ov-grid">
