@@ -52,17 +52,18 @@ export async function POST(request: Request) {
     const db = createServerClient()
 
     // Generate invoice number
-    const { count } = await db
+    const { count: invCount } = await db
       .from('invoices')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('clinic_id', clinicId)
-    const invoiceNumber = `INV-${String((count || 0) + 1).padStart(4, '0')}`
+    const invoiceNumber = `INV-${String((invCount ?? 0) + 1).padStart(4, '0')}`
 
     // Calculate totals
     const subtotal        = (items || []).reduce((s: number, i: any) => s + (parseFloat(i.fee) || 0), 0)
     const insAmt          = parseFloat(insuranceAmount) || 0
     const patientAmount   = Math.max(0, subtotal - insAmt)
 
+    console.log('[INVOICE CREATE]', { clinicId, patientId, invoiceNumber, subtotal, insAmt, patientAmount })
     const { data: invoice, error: invError } = await db
       .from('invoices')
       .insert({
