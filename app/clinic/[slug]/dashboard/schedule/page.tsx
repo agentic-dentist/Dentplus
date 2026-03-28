@@ -76,8 +76,8 @@ export default function SchedulePage() {
   const isToday     = (d: Date) => d.toDateString() === new Date().toDateString()
 
   const rangeLabel = isAllView
-    ? selectedDay.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-    : `${weekDays[0].toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })} — ${weekDays[6].toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    ? selectedDay.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })
+    : `${weekDays[0].toLocaleDateString('en-CA', { month: 'short', day: 'numeric' , timeZone: 'America/Toronto' })} — ${weekDays[6].toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })}`
 
   // Owner + receptionist see everyone. Dentist/hygienist see only themselves.
   const canSeeAll = myRole === 'owner' || myRole === 'receptionist' || myRole === 'billing'
@@ -430,8 +430,8 @@ export default function SchedulePage() {
                   ) : (
                     weekDays.map(day => (
                       <th key={day.toISOString()} className={`th-prov ${isToday(day) ? 'today-col' : ''}`}>
-                        {day.toLocaleDateString('en-CA', { weekday: 'short' })}
-                        <div style={{ fontSize: 10, fontWeight: 400 }}>{day.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}</div>
+                        {day.toLocaleDateString('en-CA', { weekday: 'short' , timeZone: 'America/Toronto' })}
+                        <div style={{ fontSize: 10, fontWeight: 400 }}>{day.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' , timeZone: 'America/Toronto' })}</div>
                       </th>
                     ))
                   )}
@@ -583,7 +583,7 @@ export default function SchedulePage() {
                   ) : aptNotes.map(n => (
                     <div key={n.id} className="past-note">
                       <div className="past-note-meta">
-                        <span>{new Date(n.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        <span>{new Date(n.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })}</span>
                         {n.written_by_name && <span>· {n.written_by_name}</span>}
                         {n.is_private && <span className="private-pill">Private</span>}
                       </div>

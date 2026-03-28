@@ -539,7 +539,7 @@ export default function ReferralsPage() {
                       <td className="ref-td" style={{ textTransform: 'capitalize' }}>{r.urgency}</td>
                       <td className="ref-td"><span className="badge" style={s}>{r.status}</span></td>
                       <td className="ref-td" style={{ fontSize: '12px', color: '#94A3B8' }}>
-                        {new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })}
                       </td>
                     </tr>
                   )

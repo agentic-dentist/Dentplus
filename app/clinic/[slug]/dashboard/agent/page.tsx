@@ -181,7 +181,7 @@ export default function AgentPage() {
     if (diffMins < 60) return `${diffMins}m ago`
     if (diffHrs < 24)  return `${diffHrs}h ago`
     if (diffDays < 7)  return `${diffDays}d ago`
-    return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
+    return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' , timeZone: 'America/Toronto' })
   }
 
   const formatAction = (action: string) =>

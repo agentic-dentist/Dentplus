@@ -794,7 +794,7 @@ export default function PatientsPage() {
     draft: 'Draft', sent: 'Sent', partial: 'Partial payment', paid: 'Paid', overdue: 'Overdue',
   }
   const fmtMoney = (n: number) => `$${(n || 0).toFixed(2)}`
-  const fmtDate  = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+  const fmtDate  = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })
 
   // Approve / reject
   const updateStatus = async (status: string) => {
@@ -1087,7 +1087,7 @@ export default function PatientsPage() {
         ) : treatmentNotes.map(note => (
           <div key={note.id} className="note-card">
             <div className="note-meta">
-              <span className="note-date">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              <span className="note-date">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })}</span>
               {note.written_by_name && <span className="note-author">by {note.written_by_name}</span>}
               {note.appointment_type && <span className="note-author">· {note.appointment_type}</span>}
               {note.is_private && <span className="private-badge">Staff only</span>}
@@ -1203,7 +1203,7 @@ export default function PatientsPage() {
                 <div>
                   <div className="plan-card-title">{plan.title}</div>
                   <div className="plan-card-meta">
-                    By {plan.created_by_name || 'Staff'} · {new Date(plan.created_at).toLocaleDateString('en-CA', {month:'short',day:'numeric',year:'numeric'})}
+                    By {plan.created_by_name || 'Staff'} · {new Date(plan.created_at).toLocaleDateString('en-CA', {month:'short',day:'numeric',year:'numeric', timeZone: 'America/Toronto' })}
                   </div>
                 </div>
                 <div className="plan-actions">
@@ -1295,7 +1295,7 @@ export default function PatientsPage() {
                     <div>
                       <div className="sig-done-text">Patient approved this plan</div>
                       <div className="sig-done-sub">
-                        Signed: {new Date(plan.patient_signed_at!).toLocaleDateString('en-CA', {month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+                        Signed: {new Date(plan.patient_signed_at!).toLocaleDateString('en-CA', {month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit', timeZone: 'America/Toronto' })}
                       </div>
                     </div>
                   </div>
@@ -1475,7 +1475,7 @@ export default function PatientsPage() {
                   <div className="inv-pay-title">Payment history</div>
                   {inv.invoice_payments.map(pay => (
                     <div key={pay.id} className="inv-pay-row">
-                      <span>{new Date(pay.paid_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})} · {pay.method}{pay.reference ? ` · ${pay.reference}` : ''}</span>
+                      <span>{new Date(pay.paid_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric', timeZone: 'America/Toronto' })} · {pay.method}{pay.reference ? ` · ${pay.reference}` : ''}</span>
                       <span className="pay-amt">{fmtMoney(pay.amount)}</span>
                     </div>
                   ))}

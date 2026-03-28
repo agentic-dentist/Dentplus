@@ -72,7 +72,7 @@ const buildCalendar = () => {
   const months: { label: string; days: { date: Date; dateStr: string; dow: number }[] }[] = []
   let cur = new Date(today); const end = new Date(today); end.setDate(end.getDate()+90)
   while (cur <= end) {
-    const lbl = cur.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' })
+    const lbl = cur.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' , timeZone: 'America/Toronto' })
     let m = months.find(x => x.label === lbl)
     if (!m) { m = { label: lbl, days: [] }; months.push(m) }
     m.days.push({ date: new Date(cur), dateStr: cur.toISOString().slice(0,10), dow: cur.getDay() })
@@ -422,7 +422,7 @@ export default function MySchedulePage() {
                     const isHoliday = STAT_HOLIDAYS.some(h => h.date === e.exception_date)
                     return (
                       <div key={e.id} className="exc-item">
-                        <span className="exc-date">{new Date(e.exception_date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short'})}</span>
+                        <span className="exc-date">{new Date(e.exception_date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short', timeZone: 'America/Toronto' })}</span>
                         <span className="exc-reason">{e.reason || 'Day off'}</span>
                         <span className={`exc-badge ${isHoliday ? 'holiday' : ''}`}>{isHoliday ? 'Holiday' : 'Blocked'}</span>
                         <button className="exc-remove" onClick={() => removeException(e.id)}>✕</button>
@@ -542,7 +542,7 @@ export default function MySchedulePage() {
                             {checked && <span style={{fontSize:10,color:'white',lineHeight:1}}>✓</span>}
                           </div>
                           <span className="holiday-name">{h.name}</span>
-                          <span className="holiday-date">{new Date(h.date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short'})}</span>
+                          <span className="holiday-date">{new Date(h.date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short', timeZone: 'America/Toronto' })}</span>
                           <span className="holiday-flag">{h.flag}</span>
                           {taken && <span className="holiday-added">✓ added</span>}
                         </div>

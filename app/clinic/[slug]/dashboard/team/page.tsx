@@ -589,7 +589,7 @@ export default function TeamPage() {
                     : provExceptions.map(e => (
                       <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'1px solid #F8FAFC' }}>
                         <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:'#0F172A', minWidth:90 }}>
-                          {new Date(e.exception_date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short'})}
+                          {new Date(e.exception_date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',weekday:'short', timeZone: 'America/Toronto' })}
                         </span>
                         <span style={{ fontSize:12, color:'#64748B', flex:1 }}>{e.reason || 'Day off'}</span>
                         <button onClick={() => removeProvException(e.id)}
@@ -675,7 +675,7 @@ export default function TeamPage() {
                               </div>
                               <span style={{ fontSize:13, color:'#0F172A', flex:1 }}>{h.name}</span>
                               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:'#94A3B8' }}>
-                                {new Date(h.date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric'})}
+                                {new Date(h.date+'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric', timeZone: 'America/Toronto' })}
                               </span>
                               {taken && <span style={{ fontSize:10, color:'#10B981', fontWeight:600 }}>added</span>}
                             </div>

@@ -127,8 +127,8 @@ export default function RecallPage() {
     setPreviewLoading(false)
   }
 
-  const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
-  const fmtDt   = (d: string) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })
+  const fmtDt   = (d: string) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' , timeZone: 'America/Toronto' })
 
   const coveredCount      = candidates.filter(c => c.coverageStatus === 'covered').length
   const likelyCoveredCount = candidates.filter(c => c.coverageStatus === 'likely_covered').length

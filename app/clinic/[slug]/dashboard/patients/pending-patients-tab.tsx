@@ -76,7 +76,7 @@ export function PendingPatientsTab() {
             <div style={{ fontSize: 15, fontWeight: 600, color: '#0F172A', marginBottom: 3 }}>{account.full_name}</div>
             <div style={{ fontSize: 13, color: '#94A3B8' }}>{account.email}</div>
             <div style={{ fontSize: 11, color: '#CBD5E1', marginTop: 4 }}>
-              Registered {new Date(account.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
+              Registered {new Date(account.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
