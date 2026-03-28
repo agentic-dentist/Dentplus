@@ -1,5 +1,7 @@
 'use client'
 
+import React from 'react'
+
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useClinicUser } from '../clinic-context'
@@ -110,6 +112,18 @@ interface Invoice {
   treatment_plan_id: string | null
   invoice_items: InvoiceItem[]
   invoice_payments: InvoicePayment[]
+}
+
+interface PatientFile {
+  id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  category: 'xray' | 'photo' | 'document' | 'dicom' | 'other'
+  notes: string | null
+  uploaded_by_name: string | null
+  created_at: string
+  file_path: string
 }
 
 type ChartTab = 'overview' | 'appointments' | 'notes' | 'treatment-plan' | 'clinical' | 'billing'
@@ -336,6 +350,34 @@ const CSS = `
   .badge-in_progress{ padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEF3C7; color: #D97706; }
   .badge-completed  { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #F0FDF4; color: #16A34A; }
 
+  /* Clinical / Files tab */
+  .clin-top        { display:flex;align-items:center;justify-content:space-between;margin-bottom:18px }
+  .clin-title      { font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A }
+  .clin-upload     { border:2px dashed #E2E8F0;border-radius:14px;padding:28px;text-align:center;cursor:pointer;transition:all .15s;margin-bottom:18px;background:#FAFAFA }
+  .clin-upload:hover,.clin-upload.drag-over { border-color:#4F46E5;background:#EEF2FF }
+  .clin-upload-icon { font-size:28px;margin-bottom:8px;opacity:.5 }
+  .clin-upload-text { font-size:13px;color:#64748B;margin-bottom:4px }
+  .clin-upload-sub  { font-size:11px;color:#CBD5E1 }
+  .clin-upload-opts { display:flex;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap }
+  .clin-cat-btn     { padding:5px 12px;border:1.5px solid #E2E8F0;border-radius:20px;font-size:11px;font-weight:600;background:white;color:#64748B;cursor:pointer;font-family:'Inter',sans-serif;transition:all .12s }
+  .clin-cat-btn.active { border-color:#4F46E5;color:#4F46E5;background:#EEF2FF }
+  .clin-files-grid  { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px }
+  .clin-file-card   { background:white;border:1.5px solid #E2E8F0;border-radius:12px;overflow:hidden;cursor:pointer;transition:all .15s;position:relative }
+  .clin-file-card:hover { border-color:#4F46E5;box-shadow:0 2px 12px rgba(79,70,229,.1) }
+  .clin-file-thumb  { width:100%;height:110px;object-fit:cover;display:block;background:#F8FAFC }
+  .clin-file-icon-wrap { width:100%;height:110px;display:flex;align-items:center;justify-content:center;background:#F8FAFC;font-size:36px }
+  .clin-file-info   { padding:10px 12px }
+  .clin-file-name   { font-size:12px;font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px }
+  .clin-file-meta   { font-size:10px;color:#94A3B8 }
+  .clin-file-cat    { display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:#EEF2FF;color:#4F46E5;margin-top:5px }
+  .clin-file-del    { position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,.85);border:none;color:white;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s }
+  .clin-file-card:hover .clin-file-del { opacity:1 }
+  .clin-notes-input { width:100%;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-top:10px }
+  .clin-notes-input:focus { border-color:#4F46E5 }
+  .lightbox-overlay { position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px }
+  .lightbox-img     { max-width:90vw;max-height:88vh;border-radius:8px;object-fit:contain }
+  .lightbox-close   { position:absolute;top:16px;right:20px;background:rgba(255,255,255,.1);border:none;color:white;font-size:22px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center }
+
   /* Billing / Invoices tab */
   .inv-topbar      { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px }
   .inv-title       { font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A }
@@ -432,6 +474,18 @@ const CSS = `
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// Lazy image thumbnail — fetches signed URL on mount
+function FileThumb({ file, clinicId }: { file: PatientFile; clinicId: string }) {
+  const [src, setSrc] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    fetch(`/api/files?fileId=${file.id}&clinicId=${clinicId}`)
+      .then(r => r.json())
+      .then(d => { if (d.url) setSrc(d.url) })
+  }, [file.id, clinicId])
+  if (!src) return <div className="clin-file-icon-wrap" style={{fontSize:28}}>📷</div>
+  return <img src={src} className="clin-file-thumb" alt={file.file_name} />
+}
+
 export default function PatientsPage() {
   const { clinicId, staffId, staffName, staffRole } = useClinicUser()
 
@@ -510,6 +564,16 @@ export default function PatientsPage() {
   ])
   const [fromPlanId, setFromPlanId]           = useState<string | null>(null)
 
+  // Files / Clinical
+  const [files, setFiles]               = useState<PatientFile[]>([])
+  const [loadingFiles, setLoadingFiles] = useState(false)
+  const [uploading, setUploading]       = useState(false)
+  const [lightbox, setLightbox]         = useState<string | null>(null)
+  const [fileCategory, setFileCategory] = useState('xray')
+  const [fileNotes, setFileNotes]       = useState('')
+  const [dragOver, setDragOver]         = useState(false)
+  const fileInputRef                    = React.useRef<HTMLInputElement>(null)
+
   const supabase = createClient()
 
   // Load patients
@@ -563,6 +627,7 @@ export default function PatientsPage() {
     loadAppts(p.id)
     loadPlans(p.id)
     loadInvoices(p.id)
+    loadFiles(p.id)
   }
 
   const closeChart = () => { setSelected(null); setDetail(null) }
@@ -795,6 +860,78 @@ export default function PatientsPage() {
   }
   const fmtMoney = (n: number) => `$${(n || 0).toFixed(2)}`
   const fmtDate  = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' , timeZone: 'America/Toronto' })
+
+  // Files
+  const loadFiles = async (patientId: string) => {
+    setLoadingFiles(true)
+    const res  = await fetch(`/api/files?patientId=${patientId}&clinicId=${clinicId}`)
+    const data = await res.json()
+    setFiles(data.files || [])
+    setLoadingFiles(false)
+  }
+
+  const uploadFile = async (file: File) => {
+    if (!selected) return
+    setUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('clinicId', clinicId)
+    fd.append('patientId', selected.id)
+    fd.append('category', fileCategory)
+    fd.append('notes', fileNotes)
+    fd.append('uploadedBy', staffId)
+    fd.append('uploadedByName', staffName)
+    const res  = await fetch('/api/files', { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.file) {
+      setFiles(prev => [data.file, ...prev])
+      setFileNotes('')
+    }
+    setUploading(false)
+  }
+
+  const deleteFile = async (fileId: string) => {
+    if (!confirm('Delete this file?')) return
+    await fetch(`/api/files?fileId=${fileId}&clinicId=${clinicId}`, { method: 'DELETE' })
+    setFiles(prev => prev.filter(f => f.id !== fileId))
+    if (lightbox === fileId) setLightbox(null)
+  }
+
+  const getSignedUrl = async (fileId: string): Promise<string | null> => {
+    const res  = await fetch(`/api/files?fileId=${fileId}&clinicId=${clinicId}`)
+    const data = await res.json()
+    return data.url || null
+  }
+
+  const openFile = async (file: PatientFile) => {
+    const url = await getSignedUrl(file.id)
+    if (!url) return
+    const isImage = file.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name)
+    if (isImage) {
+      setLightbox(url)
+    } else {
+      window.open(url, '_blank')
+    }
+  }
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false)
+    const dropped = Array.from(e.dataTransfer.files)
+    dropped.forEach(f => uploadFile(f))
+  }
+
+  const fmtFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  const FILE_ICON: Record<string, string> = {
+    xray: '🦷', photo: '📷', document: '📄', dicom: '🔬', other: '📎'
+  }
+  const FILE_CATEGORY_LABEL: Record<string, string> = {
+    xray: 'X-Ray', photo: 'Photo', document: 'Document', dicom: 'DICOM', other: 'Other'
+  }
 
   // Approve / reject
   const updateStatus = async (status: string) => {
@@ -1306,7 +1443,102 @@ export default function PatientsPage() {
           ))}
         </>
       )
-      case 'clinical':       return <ComingSoon icon="⬡" title="Clinical" sub="Prescriptions, lab orders, and X-ray attachments — coming soon." />
+      case 'clinical': return (
+        <>
+          {/* Lightbox */}
+          {lightbox && (
+            <div className="lightbox-overlay" onClick={() => setLightbox(null)}>
+              <button className="lightbox-close" onClick={() => setLightbox(null)}>✕</button>
+              <img src={lightbox} className="lightbox-img" onClick={e => e.stopPropagation()} />
+            </div>
+          )}
+
+          <div className="clin-top">
+            <div className="clin-title">Clinical Files</div>
+            <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              {uploading ? 'Uploading…' : '+ Upload file'}
+            </button>
+            <input ref={fileInputRef} type="file" style={{display:'none'}}
+              accept="image/*,.pdf,.dcm,.dicom"
+              multiple
+              onChange={e => Array.from(e.target.files || []).forEach(f => uploadFile(f))}
+            />
+          </div>
+
+          {/* Upload zone */}
+          <div
+            className={`clin-upload ${dragOver ? 'drag-over' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="clin-upload-icon">📁</div>
+            <div className="clin-upload-text">Drop files here or click to browse</div>
+            <div className="clin-upload-sub">Supports JPG, PNG, PDF, DICOM · Max 50MB</div>
+
+            {/* Category selector */}
+            <div className="clin-upload-opts" onClick={e => e.stopPropagation()}>
+              {(['xray','photo','document','dicom','other'] as const).map(cat => (
+                <button key={cat}
+                  className={`clin-cat-btn ${fileCategory === cat ? 'active' : ''}`}
+                  onClick={() => setFileCategory(cat)}>
+                  {FILE_ICON[cat]} {FILE_CATEGORY_LABEL[cat]}
+                </button>
+              ))}
+            </div>
+
+            {/* Optional note */}
+            <div onClick={e => e.stopPropagation()}>
+              <input
+                className="clin-notes-input"
+                style={{maxWidth:360,margin:'10px auto 0'}}
+                placeholder="Add a note (optional)…"
+                value={fileNotes}
+                onChange={e => setFileNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* File grid */}
+          {loadingFiles ? (
+            <div className="no-data">Loading files…</div>
+          ) : files.length === 0 ? (
+            <div className="card-box">
+              <div className="no-data">No files uploaded yet</div>
+            </div>
+          ) : (
+            <div className="clin-files-grid">
+              {files.map(file => {
+                const isImage = file.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name)
+                return (
+                  <div key={file.id} className="clin-file-card" onClick={() => openFile(file)}>
+                    <button className="clin-file-del" onClick={e => { e.stopPropagation(); deleteFile(file.id) }}>✕</button>
+
+                    {isImage ? (
+                      <FileThumb file={file} clinicId={clinicId} />
+                    ) : (
+                      <div className="clin-file-icon-wrap">{FILE_ICON[file.category] || '📎'}</div>
+                    )}
+
+                    <div className="clin-file-info">
+                      <div className="clin-file-name">{file.file_name}</div>
+                      <div className="clin-file-meta">
+                        {fmtFileSize(file.file_size)} · {file.uploaded_by_name || 'Staff'}
+                      </div>
+                      <div className="clin-file-meta">
+                        {new Date(file.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Toronto' })}
+                      </div>
+                      <span className="clin-file-cat">{FILE_CATEGORY_LABEL[file.category] || 'Other'}</span>
+                      {file.notes && <div style={{fontSize:11,color:'#64748B',marginTop:5,fontStyle:'italic'}}>{file.notes}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )
       case 'billing': return (
         <>
           <div className="inv-topbar">
