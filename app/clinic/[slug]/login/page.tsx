@@ -87,26 +87,26 @@ export default function LoginPage({
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=Inter:wght@400;500;600&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'DM Sans', sans-serif; background: #F8FAFC; min-height: 100vh; }
+        body { font-family: 'Inter', sans-serif; background: #F8FAFC; min-height: 100vh; }
         .page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; }
         .card { background: white; border-radius: 20px; border: 1px solid #E2E8F0; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
-        .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #94A3B8; text-decoration: none; margin-bottom: 24px; cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
+        .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #94A3B8; text-decoration: none; margin-bottom: 24px; cursor: pointer; background: none; border: none; font-family: 'Inter', sans-serif; }
         .back:hover { color: #64748B; }
         .title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
         .subtitle { font-size: 13px; color: #94A3B8; margin-bottom: 28px; }
         .field { margin-bottom: 14px; }
         label { display: block; font-size: 12px; font-weight: 500; color: #64748B; margin-bottom: 5px; letter-spacing: 0.3px; }
-        input { width: 100%; padding: 10px 14px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: #0F172A; outline: none; transition: border-color 0.15s; }
-        input:focus { border-color: #0EA5E9; }
-        .btn-primary { width: 100%; padding: 12px; border-radius: 10px; background: #0F172A; color: white; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; border: none; margin-top: 8px; transition: background 0.15s; }
-        .btn-primary:hover { background: #1E293B; }
+        input { width: 100%; padding: 10px 14px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 14px; font-family: 'Inter', sans-serif; color: #0F172A; outline: none; transition: border-color 0.15s; }
+        input:focus { border-color: #4F46E5; }
+        .btn-primary { width: 100%; padding: 12px; border-radius: 10px; background: #4F46E5; color: white; font-size: 14px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; border: none; margin-top: 8px; transition: background 0.15s; }
+        .btn-primary:hover { background: #4338CA; }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
         .divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
         .divider-line { flex: 1; height: 1px; background: #F1F5F9; }
         .divider-text { font-size: 11px; color: #CBD5E1; font-weight: 500; }
-        .btn-google { width: 100%; padding: 10px; border-radius: 10px; border: 1.5px solid #E2E8F0; background: white; font-size: 14px; font-family: 'DM Sans', sans-serif; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
+        .btn-google { width: 100%; padding: 10px; border-radius: 10px; border: 1.5px solid #E2E8F0; background: white; font-size: 14px; font-family: 'Inter', sans-serif; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
         .btn-google:hover { background: #F8FAFC; }
         .error { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #DC2626; margin-bottom: 14px; }
       `}</style>

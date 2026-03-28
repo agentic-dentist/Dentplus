@@ -54,10 +54,10 @@ export default function AcceptInvitePage({ params }: { params: Promise<{ token: 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Sans:wght@400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'DM Sans',sans-serif;background:#F8FAFC;min-height:100vh}
+        body{font-family:'Inter',sans-serif;background:#F8FAFC;min-height:100vh}
         .page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px}
         .brand{display:flex;align-items:center;gap:10px;margin-bottom:32px}
-        .brand-icon{width:36px;height:36px;background:#0F172A;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+        .brand-icon{width:36px;height:36px;background:#00C4A7;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
         .brand-name{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0F172A}
         .card{background:white;border-radius:16px;border:1px solid #E2E8F0;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,0.06)}
         .title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#0F172A;margin-bottom:4px}
@@ -68,10 +68,10 @@ export default function AcceptInvitePage({ params }: { params: Promise<{ token: 
         .invite-val{color:#0F172A;font-weight:500;text-transform:capitalize}
         .field{margin-bottom:14px}
         label{display:block;font-size:12px;font-weight:500;color:#64748B;margin-bottom:5px}
-        input{width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;color:#0F172A;outline:none;transition:border-color .15s}
+        input{width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;color:#0F172A;outline:none;transition:border-color .15s}
         input:focus{border-color:#0F172A}
-        .btn{width:100%;padding:12px;border-radius:10px;background:#0F172A;color:white;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;margin-top:8px;transition:background .15s}
-        .btn:hover{background:#1E293B}
+        .btn{width:100%;padding:12px;border-radius:10px;background:#4F46E5;color:white;font-size:14px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;border:none;margin-top:8px;transition:background .15s}
+        .btn:hover{background:#4338CA}
         .btn:disabled{opacity:.6;cursor:not-allowed}
         .error{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:13px;color:#DC2626;margin-bottom:14px}
         .msg{text-align:center;padding:16px;color:#94A3B8;font-size:14px}

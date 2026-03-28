@@ -306,7 +306,7 @@ function Step2({ clinicId, onSaved }: { clinicId: string; onSaved: (providers: P
 function Step3({ clinicId, staffIds, onSaved }: { clinicId: string; staffIds: { id: string; name: string }[]; onSaved: () => void }) {
   const [services, setServices] = useState<Service[]>([
     { name: 'Cleaning', duration_mins: 60, color: '#1D9E75', staff_ids: [] },
-    { name: 'Exam', duration_mins: 30, color: '#0EA5E9', staff_ids: [] },
+    { name: 'Exam', duration_mins: 30, color: '#4F46E5', staff_ids: [] },
   ])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
