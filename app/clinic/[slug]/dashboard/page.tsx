@@ -143,7 +143,7 @@ export default function DashboardPage() {
     <>
       <style>{`
         .ov-header       { margin-bottom:28px }
-        .ov-greeting     { font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-.5px }
+        .ov-greeting     { font-family:'Inter',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-.5px }
         .ov-date         { font-size:13px;color:#94A3B8;margin-top:4px;font-weight:500 }
         .ov-stats        { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;align-items:stretch }
         .ov-stat         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:16px 20px;transition:box-shadow .15s;min-height:100px;display:flex;flex-direction:column;justify-content:space-between }
@@ -151,7 +151,7 @@ export default function DashboardPage() {
         .ov-stat.primary { background:#4F46E5;border-color:#4F46E5 }
         .ov-stat-label   { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:8px }
         .ov-stat.primary .ov-stat-label { color:rgba(255,255,255,.65) }
-        .ov-stat-val     { font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#0F172A;line-height:1 }
+        .ov-stat-val     { font-family:'Inter',sans-serif;font-size:32px;font-weight:700;color:#0F172A;line-height:1 }
         .ov-stat.primary .ov-stat-val   { color:#FFFFFF }
         .ov-stat-sub     { font-size:11px;color:#94A3B8;margin-top:6px;font-weight:500 }
         .ov-stat.primary .ov-stat-sub   { color:rgba(255,255,255,.6) }
@@ -160,7 +160,7 @@ export default function DashboardPage() {
         .ov-grid         { display:grid;grid-template-columns:1fr 320px;gap:16px }
         .ov-card         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden }
         .ov-card-head    { padding:16px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between }
-        .ov-card-title   { font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0F172A }
+        .ov-card-title   { font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#0F172A }
         .ov-card-meta    { font-size:11px;color:#CBD5E1;font-weight:600;letter-spacing:.3px }
         .ov-card-meta.live { color:#00C4A7 }
         .ov-apt-row      { display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid #F8FAFC;transition:background .1s }
