@@ -74,6 +74,44 @@ interface TreatmentPlan {
   treatment_plan_items: TreatmentPlanItem[]
 }
 
+interface InvoiceItem {
+  id?: string
+  description: string
+  procedure_code: string | null
+  tooth_number: string | null
+  fee: number
+  insurance_covers: number
+  patient_portion: number
+  sort_order?: number
+}
+
+interface InvoicePayment {
+  id: string
+  amount: number
+  method: string
+  reference: string | null
+  notes: string | null
+  paid_at: string
+}
+
+interface Invoice {
+  id: string
+  invoice_number: string
+  status: 'draft' | 'sent' | 'partial' | 'paid' | 'overdue'
+  notes: string | null
+  subtotal: number
+  insurance_amount: number
+  patient_amount: number
+  amount_paid: number
+  balance_due: number
+  due_date: string | null
+  created_by_name: string | null
+  created_at: string
+  treatment_plan_id: string | null
+  invoice_items: InvoiceItem[]
+  invoice_payments: InvoicePayment[]
+}
+
 type ChartTab = 'overview' | 'appointments' | 'notes' | 'treatment-plan' | 'clinical' | 'billing'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -298,6 +336,69 @@ const CSS = `
   .badge-in_progress{ padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEF3C7; color: #D97706; }
   .badge-completed  { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #F0FDF4; color: #16A34A; }
 
+  /* Billing / Invoices tab */
+  .inv-topbar      { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px }
+  .inv-title       { font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A }
+  .btn-new-inv     { padding:8px 16px;background:#4F46E5;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer }
+  .btn-new-inv:hover { background:#4338CA }
+  .inv-card        { background:white;border:1.5px solid #E2E8F0;border-radius:14px;overflow:hidden;margin-bottom:14px }
+  .inv-card.unpaid { border-color:#FDE68A }
+  .inv-card.paid   { border-color:#BBF7D0 }
+  .inv-header      { padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px }
+  .inv-num         { font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0F172A }
+  .inv-meta        { font-size:12px;color:#94A3B8;margin-top:3px }
+  .inv-actions     { display:flex;gap:8px;align-items:center;flex-wrap:wrap }
+  .inv-table       { width:100%;border-collapse:collapse }
+  .inv-table th    { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;padding:9px 16px;text-align:left;border-bottom:1px solid #F1F5F9;background:#FAFAFA }
+  .inv-table th.r  { text-align:right }
+  .inv-table td    { font-size:13px;color:#334155;padding:11px 16px;border-bottom:1px solid #F8FAFC }
+  .inv-table tr:last-child td { border-bottom:none }
+  .inv-table td.r  { text-align:right;font-weight:600;color:#0F172A }
+  .inv-proc-code   { display:inline-block;padding:1px 7px;background:#F1F5F9;border-radius:5px;font-size:10px;font-weight:600;color:#475569;margin-right:6px }
+  .inv-totals      { padding:14px 20px;border-top:1px solid #F1F5F9;background:#FAFAFA }
+  .inv-total-row   { display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px }
+  .inv-total-row .lbl { color:#64748B }
+  .inv-total-row .val { font-weight:600;color:#0F172A }
+  .inv-total-row.balance .lbl { font-weight:700;color:#0F172A;font-size:15px }
+  .inv-total-row.balance .val { font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0F172A }
+  .inv-total-row.balance.zero .val { color:#059669 }
+  .inv-payments    { padding:12px 20px;border-top:1px solid #F1F5F9;background:#F0FDF4 }
+  .inv-pay-title   { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#059669;margin-bottom:8px }
+  .inv-pay-row     { display:flex;justify-content:space-between;font-size:12px;color:#334155;padding:3px 0 }
+  .inv-pay-row .pay-amt { font-weight:600;color:#059669 }
+  .pay-form        { padding:14px 20px;border-top:1px solid #F1F5F9;background:#F8FAFC }
+  .pay-form-title  { font-size:12px;font-weight:600;color:#0F172A;margin-bottom:10px }
+  .pay-form-row    { display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap }
+  .pay-form-field  { display:flex;flex-direction:column;gap:4px }
+  .pay-form-field label { font-size:10px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.5px }
+  .pay-form-field input, .pay-form-field select { padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;outline:none }
+  .pay-form-field input:focus, .pay-form-field select:focus { border-color:#4F46E5 }
+  .btn-record-pay  { padding:9px 18px;background:#059669;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap }
+  .btn-record-pay:disabled { opacity:.5;cursor:not-allowed }
+  .inv-new-form    { background:white;border:1.5px solid #E2E8F0;border-radius:14px;padding:24px;margin-bottom:18px }
+  .inv-form-field  { margin-bottom:14px }
+  .inv-form-label  { display:block;font-size:11px;font-weight:600;color:#64748B;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px }
+  .inv-form-input  { width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none }
+  .inv-form-input:focus { border-color:#4F46E5 }
+  .inv-items-table { width:100%;border-collapse:collapse;margin-bottom:12px }
+  .inv-items-table th { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;padding:8px 8px;text-align:left;border-bottom:1px solid #F1F5F9 }
+  .inv-items-table td { padding:5px 4px;vertical-align:middle }
+  .inv-items-table input, .inv-items-table select { width:100%;padding:7px 8px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none }
+  .inv-items-table input:focus, .inv-items-table select:focus { border-color:#4F46E5 }
+  .btn-add-inv-row { padding:7px 14px;border:1.5px dashed #E2E8F0;background:none;border-radius:7px;font-size:12px;color:#94A3B8;cursor:pointer;font-family:'Inter',sans-serif }
+  .btn-add-inv-row:hover { border-color:#4F46E5;color:#4F46E5 }
+  .inv-form-footer { display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid #F1F5F9;margin-top:8px }
+  .inv-form-total  { font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#0F172A }
+  .inv-form-total-label { font-size:12px;color:#94A3B8 }
+  .inv-form-actions { display:flex;gap:8px }
+  .btn-save-inv    { padding:9px 20px;background:#4F46E5;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer }
+  .btn-save-inv:hover { background:#4338CA }
+  .badge-draft     { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#F1F5F9;color:#64748B }
+  .badge-sent      { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#EEF2FF;color:#4F46E5 }
+  .badge-partial   { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#FEF3C7;color:#D97706 }
+  .badge-paid      { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#D1FAE5;color:#059669 }
+  .badge-overdue   { padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#FEE2E2;color:#DC2626 }
+
   /* Cancel / Reschedule modals */
   .modal-backdrop   { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 400; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -391,6 +492,24 @@ export default function PatientsPage() {
     { procedureCode: '', description: '', toothNumber: '', surface: '', fee: '' }
   ])
 
+  // Invoices
+  const [invoices, setInvoices]               = useState<Invoice[]>([])
+  const [loadingInvoices, setLoadingInvoices] = useState(false)
+  const [showNewInvoice, setShowNewInvoice]   = useState(false)
+  const [savingInvoice, setSavingInvoice]     = useState(false)
+  const [showPayForm, setShowPayForm]         = useState<string | null>(null)
+  const [payAmount, setPayAmount]             = useState('')
+  const [payMethod, setPayMethod]             = useState('cash')
+  const [payReference, setPayReference]       = useState('')
+  const [recordingPay, setRecordingPay]       = useState(false)
+  const [newInvNotes, setNewInvNotes]         = useState('')
+  const [newInvDueDate, setNewInvDueDate]     = useState('')
+  const [newInvInsurance, setNewInvInsurance] = useState('')
+  const [newInvItems, setNewInvItems]         = useState([
+    { description: '', procedureCode: '', toothNumber: '', fee: '', insuranceCovers: '' }
+  ])
+  const [fromPlanId, setFromPlanId]           = useState<string | null>(null)
+
   const supabase = createClient()
 
   // Load patients
@@ -443,6 +562,7 @@ export default function PatientsPage() {
     loadNotes(p.id)
     loadAppts(p.id)
     loadPlans(p.id)
+    loadInvoices(p.id)
   }
 
   const closeChart = () => { setSelected(null); setDetail(null) }
@@ -580,6 +700,101 @@ export default function PatientsPage() {
     { code: 'D7210', desc: 'Extraction – surgical' },
     { code: 'D9944', desc: 'Occlusal guard (night guard)' },
   ]
+
+  // Invoices
+  const loadInvoices = async (patientId: string) => {
+    setLoadingInvoices(true)
+    const res  = await fetch(`/api/invoices?patientId=${patientId}&clinicId=${clinicId}`)
+    const data = await res.json()
+    setInvoices(data.invoices || [])
+    setLoadingInvoices(false)
+  }
+
+  const prefillFromPlan = (plan: TreatmentPlan) => {
+    setFromPlanId(plan.id)
+    setNewInvItems(plan.treatment_plan_items.map(i => ({
+      description:      i.description,
+      procedureCode:    i.procedure_code || '',
+      toothNumber:      i.tooth_number || '',
+      fee:              String(i.fee),
+      insuranceCovers:  '',
+    })))
+    setShowNewInvoice(true)
+  }
+
+  const saveInvoice = async () => {
+    if (!selected) return
+    setSavingInvoice(true)
+    const res = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId, patientId: selected.id,
+        createdBy: staffId, createdByName: staffName,
+        treatmentPlanId: fromPlanId,
+        notes: newInvNotes,
+        dueDate: newInvDueDate || null,
+        insuranceAmount: newInvInsurance,
+        items: newInvItems.filter(i => i.description.trim()),
+      })
+    })
+    const data = await res.json()
+    if (data.invoice) {
+      setInvoices(prev => [data.invoice, ...prev])
+      setShowNewInvoice(false)
+      setFromPlanId(null)
+      setNewInvNotes(''); setNewInvDueDate(''); setNewInvInsurance('')
+      setNewInvItems([{ description: '', procedureCode: '', toothNumber: '', fee: '', insuranceCovers: '' }])
+    }
+    setSavingInvoice(false)
+  }
+
+  const recordPayment = async (invoiceId: string) => {
+    const amt = parseFloat(payAmount)
+    if (!amt || amt <= 0) return
+    setRecordingPay(true)
+    const res = await fetch('/api/invoices', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoiceId, clinicId, action: 'payment', amount: amt, method: payMethod, reference: payReference })
+    })
+    const data = await res.json()
+    if (data.invoice) {
+      setInvoices(prev => prev.map(i => i.id === invoiceId ? data.invoice : i))
+      setShowPayForm(null); setPayAmount(''); setPayReference('')
+    }
+    setRecordingPay(false)
+  }
+
+  const updateInvoiceStatus = async (invoiceId: string, status: string) => {
+    const res = await fetch('/api/invoices', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoiceId, clinicId, action: 'status', status })
+    })
+    const data = await res.json()
+    if (data.invoice) setInvoices(prev => prev.map(i => i.id === invoiceId ? data.invoice : i))
+  }
+
+  const deleteInvoice = async (invoiceId: string) => {
+    if (!confirm('Delete this invoice?')) return
+    await fetch(`/api/invoices?invoiceId=${invoiceId}&clinicId=${clinicId}`, { method: 'DELETE' })
+    setInvoices(prev => prev.filter(i => i.id !== invoiceId))
+  }
+
+  const addInvItem    = () => setNewInvItems(prev => [...prev, { description: '', procedureCode: '', toothNumber: '', fee: '', insuranceCovers: '' }])
+  const removeInvItem = (i: number) => setNewInvItems(prev => prev.filter((_, idx) => idx !== i))
+  const updateInvItem = (i: number, field: string, val: string) => setNewInvItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: val } : item))
+
+  const newInvSubtotal = newInvItems.reduce((s, i) => s + (parseFloat(i.fee) || 0), 0)
+  const newInvInsAmt   = parseFloat(newInvInsurance) || 0
+  const newInvPatient  = Math.max(0, newInvSubtotal - newInvInsAmt)
+
+  const INV_STATUS_LABEL: Record<string, string> = {
+    draft: 'Draft', sent: 'Sent', partial: 'Partial payment', paid: 'Paid', overdue: 'Overdue',
+  }
+  const fmtMoney = (n: number) => `$${(n || 0).toFixed(2)}`
+  const fmtDate  = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
 
   // Approve / reject
   const updateStatus = async (status: string) => {
@@ -1093,7 +1308,224 @@ export default function PatientsPage() {
         </>
       )
       case 'clinical':       return <ComingSoon icon="⬡" title="Clinical" sub="Prescriptions, lab orders, and X-ray attachments — coming soon." />
-      case 'billing':        return <ComingSoon icon="◎" title="Billing" sub="Invoices, payment tracking, and insurance coverage breakdown — coming soon." />
+      case 'billing': return (
+        <>
+          <div className="inv-topbar">
+            <div className="inv-title">Billing & Invoices</div>
+            <div style={{display:'flex',gap:8}}>
+              {plans.filter(p => p.status === 'approved' || p.status === 'completed').length > 0 && !showNewInvoice && (
+                <select
+                  style={{padding:'8px 12px',border:'1.5px solid #E2E8F0',borderRadius:8,fontSize:13,fontFamily:"'Inter',sans-serif",outline:'none',background:'white',color:'#334155'}}
+                  onChange={e => { if (e.target.value) { const plan = plans.find(p => p.id === e.target.value); if (plan) prefillFromPlan(plan); e.target.value = '' }}}
+                  defaultValue=""
+                >
+                  <option value="">From treatment plan…</option>
+                  {plans.filter(p => p.status === 'approved' || p.status === 'completed').map(p => (
+                    <option key={p.id} value={p.id}>{p.title} — {fmtMoney(p.total_fee)}</option>
+                  ))}
+                </select>
+              )}
+              <button className="btn-new-inv" onClick={() => { setFromPlanId(null); setShowNewInvoice(v => !v) }}>
+                {showNewInvoice ? '✕ Cancel' : '+ New invoice'}
+              </button>
+            </div>
+          </div>
+
+          {/* New invoice form */}
+          {showNewInvoice && (
+            <div className="inv-new-form">
+              {fromPlanId && (
+                <div style={{padding:'8px 12px',background:'#EEF2FF',borderRadius:8,fontSize:12,color:'#4F46E5',marginBottom:14,fontWeight:500}}>
+                  ✓ Pre-filled from treatment plan — adjust amounts as needed
+                </div>
+              )}
+              <div className="inv-form-field">
+                <label className="inv-form-label">Line items</label>
+                <table className="inv-items-table">
+                  <thead>
+                    <tr>
+                      <th>Description</th>
+                      <th style={{width:90}}>Code</th>
+                      <th style={{width:60}}>Tooth</th>
+                      <th style={{width:90}}>Fee ($)</th>
+                      <th style={{width:110}}>Insurance covers ($)</th>
+                      <th style={{width:32}}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newInvItems.map((item, i) => (
+                      <tr key={i}>
+                        <td><input value={item.description} onChange={e => updateInvItem(i, 'description', e.target.value)} placeholder="Description" /></td>
+                        <td><input value={item.procedureCode} onChange={e => updateInvItem(i, 'procedureCode', e.target.value)} placeholder="D1110" /></td>
+                        <td><input value={item.toothNumber} onChange={e => updateInvItem(i, 'toothNumber', e.target.value)} placeholder="#" /></td>
+                        <td><input type="number" value={item.fee} onChange={e => updateInvItem(i, 'fee', e.target.value)} placeholder="0.00" min="0" step="0.01" /></td>
+                        <td><input type="number" value={item.insuranceCovers} onChange={e => updateInvItem(i, 'insuranceCovers', e.target.value)} placeholder="0.00" min="0" step="0.01" /></td>
+                        <td><button style={{width:24,height:24,border:'none',background:'#FEE2E2',borderRadius:'50%',color:'#DC2626',cursor:'pointer',fontSize:14,lineHeight:1}} onClick={() => removeInvItem(i)}>×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button className="btn-add-inv-row" onClick={addInvItem}>+ Add line item</button>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:14}}>
+                <div className="inv-form-field">
+                  <label className="inv-form-label">Due date (optional)</label>
+                  <input className="inv-form-input" type="date" value={newInvDueDate} onChange={e => setNewInvDueDate(e.target.value)} />
+                </div>
+                <div className="inv-form-field">
+                  <label className="inv-form-label">Total insurance amount ($)</label>
+                  <input className="inv-form-input" type="number" value={newInvInsurance} onChange={e => setNewInvInsurance(e.target.value)} placeholder="0.00" min="0" step="0.01" />
+                </div>
+              </div>
+              <div className="inv-form-field">
+                <label className="inv-form-label">Notes (optional)</label>
+                <textarea className="inv-form-input" rows={2} style={{resize:'vertical'}} value={newInvNotes} onChange={e => setNewInvNotes(e.target.value)} placeholder="Notes for the patient…" />
+              </div>
+              <div className="inv-form-footer">
+                <div>
+                  <div className="inv-form-total-label">Subtotal: {fmtMoney(newInvSubtotal)} · Insurance: {fmtMoney(newInvInsAmt)}</div>
+                  <div className="inv-form-total">Patient owes: {fmtMoney(newInvPatient)}</div>
+                </div>
+                <div className="inv-form-actions">
+                  <button style={{padding:'9px 14px',background:'none',color:'#94A3B8',border:'none',fontSize:13,fontFamily:"'Inter',sans-serif",cursor:'pointer'}} onClick={() => setShowNewInvoice(false)}>Cancel</button>
+                  <button className="btn-save-inv" onClick={saveInvoice} disabled={savingInvoice}>
+                    {savingInvoice ? 'Saving…' : 'Save invoice'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Invoice list */}
+          {loadingInvoices ? (
+            <div className="no-data">Loading invoices…</div>
+          ) : invoices.length === 0 ? (
+            <div className="card-box"><div className="no-data">No invoices yet</div></div>
+          ) : invoices.map(inv => (
+            <div key={inv.id} className={`inv-card ${inv.balance_due <= 0 ? 'paid' : inv.status === 'overdue' ? '' : inv.amount_paid > 0 ? 'unpaid' : ''}`}>
+              <div className="inv-header">
+                <div>
+                  <div className="inv-num">{inv.invoice_number}</div>
+                  <div className="inv-meta">
+                    {inv.created_by_name || 'Staff'} · {fmtDate(inv.created_at)}
+                    {inv.due_date && ` · Due: ${fmtDate(inv.due_date)}`}
+                  </div>
+                </div>
+                <div className="inv-actions">
+                  <span className={`badge-${inv.status}`}>{INV_STATUS_LABEL[inv.status]}</span>
+                  {inv.status === 'draft' && (
+                    <button style={{padding:'5px 12px',border:'1.5px solid #C7D2FE',borderRadius:6,fontSize:12,background:'#EEF2FF',color:'#4F46E5',cursor:'pointer',fontFamily:"'Inter',sans-serif"}}
+                      onClick={() => updateInvoiceStatus(inv.id, 'sent')}>Mark sent</button>
+                  )}
+                  {(inv.status === 'sent' || inv.status === 'partial' || inv.status === 'overdue') && (
+                    <button style={{padding:'5px 12px',border:'1.5px solid #BBF7D0',borderRadius:6,fontSize:12,background:'#D1FAE5',color:'#059669',cursor:'pointer',fontFamily:"'Inter',sans-serif"}}
+                      onClick={() => setShowPayForm(showPayForm === inv.id ? null : inv.id)}>
+                      {showPayForm === inv.id ? '✕ Close' : '+ Record payment'}
+                    </button>
+                  )}
+                  {inv.status === 'draft' && (
+                    <button style={{padding:'5px 10px',border:'1.5px solid #FECACA',borderRadius:6,fontSize:12,background:'#FEF2F2',color:'#DC2626',cursor:'pointer',fontFamily:"'Inter',sans-serif"}}
+                      onClick={() => deleteInvoice(inv.id)}>Delete</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Line items table */}
+              {inv.invoice_items && inv.invoice_items.length > 0 && (
+                <table className="inv-table">
+                  <thead>
+                    <tr>
+                      <th>Description</th>
+                      <th className="r">Fee</th>
+                      <th className="r">Insurance</th>
+                      <th className="r">Patient</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...inv.invoice_items].sort((a,b) => (a.sort_order||0)-(b.sort_order||0)).map(item => (
+                      <tr key={item.id}>
+                        <td>
+                          {item.procedure_code && <span className="inv-proc-code">{item.procedure_code}</span>}
+                          {item.description}
+                          {item.tooth_number && <span style={{fontSize:11,color:'#94A3B8',marginLeft:6}}>#{item.tooth_number}</span>}
+                        </td>
+                        <td className="r">{fmtMoney(item.fee)}</td>
+                        <td className="r" style={{color:'#059669'}}>{fmtMoney(item.insurance_covers)}</td>
+                        <td className="r">{fmtMoney(item.patient_portion)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* Totals */}
+              <div className="inv-totals">
+                <div className="inv-total-row"><span className="lbl">Subtotal</span><span className="val">{fmtMoney(inv.subtotal)}</span></div>
+                <div className="inv-total-row"><span className="lbl">Insurance covers</span><span className="val" style={{color:'#059669'}}>− {fmtMoney(inv.insurance_amount)}</span></div>
+                <div className="inv-total-row"><span className="lbl">Amount paid</span><span className="val" style={{color:'#059669'}}>− {fmtMoney(inv.amount_paid)}</span></div>
+                <div style={{height:1,background:'#F1F5F9',margin:'8px 0'}} />
+                <div className={`inv-total-row balance ${inv.balance_due <= 0 ? 'zero' : ''}`}>
+                  <span className="lbl">Balance due</span>
+                  <span className="val">{inv.balance_due <= 0 ? '✓ Paid' : fmtMoney(inv.balance_due)}</span>
+                </div>
+              </div>
+
+              {/* Payment history */}
+              {inv.invoice_payments && inv.invoice_payments.length > 0 && (
+                <div className="inv-payments">
+                  <div className="inv-pay-title">Payment history</div>
+                  {inv.invoice_payments.map(pay => (
+                    <div key={pay.id} className="inv-pay-row">
+                      <span>{new Date(pay.paid_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})} · {pay.method}{pay.reference ? ` · ${pay.reference}` : ''}</span>
+                      <span className="pay-amt">{fmtMoney(pay.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Record payment form */}
+              {showPayForm === inv.id && (
+                <div className="pay-form">
+                  <div className="pay-form-title">Record payment</div>
+                  <div className="pay-form-row">
+                    <div className="pay-form-field">
+                      <label>Amount ($)</label>
+                      <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                        placeholder={fmtMoney(inv.balance_due)} min="0.01" step="0.01" style={{width:120}} />
+                    </div>
+                    <div className="pay-form-field">
+                      <label>Method</label>
+                      <select value={payMethod} onChange={e => setPayMethod(e.target.value)} style={{width:130}}>
+                        <option value="cash">Cash</option>
+                        <option value="debit">Debit</option>
+                        <option value="credit">Credit card</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="insurance">Insurance</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="pay-form-field">
+                      <label>Reference (optional)</label>
+                      <input value={payReference} onChange={e => setPayReference(e.target.value)} placeholder="Cheque #, transaction ID…" style={{width:200}} />
+                    </div>
+                    <button className="btn-record-pay" disabled={!payAmount || recordingPay}
+                      onClick={() => recordPayment(inv.id)}>
+                      {recordingPay ? 'Saving…' : 'Record payment'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {inv.notes && (
+                <div style={{padding:'10px 20px',fontSize:13,color:'#475569',borderTop:'1px solid #F1F5F9',background:'#FAFAFA'}}>
+                  <span style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',marginRight:8}}>Notes</span>
+                  {inv.notes}
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )
     }
   }
 
