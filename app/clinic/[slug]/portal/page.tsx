@@ -402,39 +402,40 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'DM Sans',sans-serif;background:#F0F4F8;color:#0F172A}
+        body{font-family:'Inter',sans-serif;background:#F1F5F9;color:#0F172A;-webkit-font-smoothing:antialiased}
         .layout{display:flex;min-height:100vh}
-        .sidebar{width:240px;background:#0F172A;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50}
-        .logo-area{padding:24px 20px 20px;border-bottom:1px solid rgba(255,255,255,0.06)}
-        .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:3px}
-        .logo-icon{width:30px;height:30px;background:#0EA5E9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px}
-        .logo-text{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#F8FAFC;letter-spacing:-0.3px}
-        .logo-sub{font-size:11px;color:rgba(148,163,184,0.5);padding-left:40px;margin-top:2px}
-        .nav{padding:12px 10px;flex:1}
-        .nav-label{font-size:9.5px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:rgba(148,163,184,0.25);padding:10px 10px 6px}
-        .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;color:rgba(148,163,184,0.5);font-size:13px;cursor:pointer;margin-bottom:1px;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;position:relative}
-        .nav-item:hover{background:rgba(255,255,255,0.05);color:#CBD5E1}
-        .nav-item.active{background:rgba(14,165,233,0.1);color:#0EA5E9;font-weight:500}
-        .nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:55%;background:#0EA5E9;border-radius:0 2px 2px 0}
-        .nav-icon{font-size:13px;width:18px;text-align:center}
-        .intake-sidebar{margin:0 12px 12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:all .15s;border:none;width:calc(100% - 24px);text-align:left;font-family:'DM Sans',sans-serif}
-        .intake-sidebar.incomplete{background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25)}
-        .intake-sidebar.pending{background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.15)}
-        .intake-sidebar.approved{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)}
-        .intake-sidebar.rejected{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2)}
+        .sidebar{width:236px;background:#FFFFFF;border-right:1px solid #E2E8F0;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:50}
+        .logo-area{padding:20px 20px 16px;border-bottom:1px solid #E2E8F0}
+        .logo-mark{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+        .logo-icon{width:32px;height:32px;background:#00C4A7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+        .logo-text{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0F172A;letter-spacing:-0.3px}
+        .logo-sub{font-size:12px;color:#64748B;font-weight:500;padding-left:42px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .nav{padding:8px 10px;flex:1}
+        .nav-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#94A3B8;padding:14px 12px 5px}
+        .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#334155;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:2px;transition:all .12s;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif}
+        .nav-item:hover{background:#F8FAFC;color:#0F172A}
+        .nav-item.active{background:#FFFFFF;color:#4F46E5;font-weight:600;border-left:3px solid #4F46E5;padding-left:9px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+        .nav-icon{font-size:13px;width:18px;text-align:center;flex-shrink:0}
+        .intake-sidebar{margin:0 12px 12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:all .15s;border:none;width:calc(100% - 24px);text-align:left;font-family:'Inter',sans-serif}
+        .intake-sidebar.incomplete{background:#FEF9EE;border:1px solid #FDE68A}
+        .intake-sidebar.pending{background:#F8FAFC;border:1px solid #E2E8F0}
+        .intake-sidebar.approved{background:#F0FDF4;border:1px solid #BBF7D0}
+        .intake-sidebar.rejected{background:#FEF2F2;border:1px solid #FECACA}
         .intake-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;margin-right:6px}
         .intake-label{font-size:11px;font-weight:600;letter-spacing:.3px}
-        .book-btn-sidebar{margin:0 12px 12px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:8px;color:#0EA5E9;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
-        .book-dot{width:5px;height:5px;border-radius:50%;background:#0EA5E9;box-shadow:0 0 6px rgba(14,165,233,0.8)}
-        .sidebar-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,0.06)}
-        .patient-name{font-size:13px;color:#CBD5E1;font-weight:500;margin-bottom:2px}
-        .signout{font-size:12px;color:rgba(148,163,184,0.4);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0}
-        .main{flex:1;margin-left:240px;padding:36px 40px;min-height:100vh}
-        .page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.4px;margin-bottom:4px}
+        .book-btn-sidebar{margin:0 12px 10px;padding:9px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;color:#64748B;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;width:calc(100% - 24px)}
+        .book-btn-sidebar:hover{border-color:#4F46E5;color:#4F46E5;background:#EEF2FF}
+        .book-dot{width:5px;height:5px;border-radius:50%;background:#00C4A7;flex-shrink:0}
+        .sidebar-footer{padding:14px 20px 18px;border-top:1px solid #E2E8F0}
+        .patient-name{font-size:13px;color:#0F172A;font-weight:500;margin-bottom:3px}
+        .signout{font-size:12px;color:#94A3B8;background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif;padding:0;transition:color .15s}
+        .signout:hover{color:#4F46E5}
+        .main{flex:1;margin-left:236px;padding:32px 36px;min-height:100vh}
+        .page-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#0F172A;letter-spacing:-0.4px;margin-bottom:4px}
         .page-sub{font-size:13px;color:#94A3B8;margin-bottom:28px}
-        .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
+        .card{background:white;border-radius:14px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
         .apt-row{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #F8FAFC}
         .apt-row:last-child{border-bottom:none}
         .apt-bar{width:3px;height:36px;border-radius:2px;flex-shrink:0}
@@ -442,22 +443,22 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
         .apt-type{font-size:14px;font-weight:500;color:#0F172A;text-transform:capitalize}
         .apt-time{font-size:12px;color:#64748B;margin-top:2px}
         .apt-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px}
-        .badge-upcoming{background:#EFF6FF;color:#0EA5E9}
+        .badge-upcoming{background:#EEF2FF;color:#4F46E5}
         .badge-past{background:#F8FAFC;color:#CBD5E1}
         .badge-cancelled{background:#FEF2F2;color:#F87171}
         .section-title{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#94A3B8;margin-bottom:12px}
         .empty{padding:32px 20px;text-align:center;color:#CBD5E1;font-size:13px}
         .intake-banner{background:white;border:1.5px solid #FDE68A;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-        .intake-banner-btn{padding:9px 18px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
-        .profile-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
+        .intake-banner-btn{padding:9px 18px;background:#4F46E5;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+        .profile-card{background:white;border-radius:14px;border:1px solid #E2E8F0;padding:20px;margin-bottom:12px}
         .profile-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F8FAFC}
         .profile-row:last-child{border-bottom:none}
         .profile-label{font-size:12px;color:#94A3B8;font-weight:500}
         .profile-value{font-size:14px;color:#0F172A}
-        .waitlist-card{background:white;border-radius:12px;border:1px solid #E2E8F0;padding:24px}
-        .confirm-btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;border:1.5px solid #E2E8F0;background:white;color:#64748B;transition:all .15s;white-space:nowrap}
-        .confirmed-badge{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#10B981}
-        .offer-banner{background:white;border:2px solid #0EA5E9;border-radius:14px;padding:20px 24px;margin-bottom:24px}
+        .waitlist-card{background:white;border-radius:14px;border:1px solid #E2E8F0;padding:24px}
+        .confirm-btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;border:1.5px solid #E2E8F0;background:white;color:#64748B;transition:all .15s;white-space:nowrap}
+        .confirmed-badge{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#059669}
+        .offer-banner{background:white;border:2px solid #4F46E5;border-radius:14px;padding:20px 24px;margin-bottom:24px}
         .offer-accept{flex:1;padding:11px;background:#0EA5E9;color:white;border:none;border-radius:9px;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer}
         .offer-decline{padding:11px 20px;background:white;color:#94A3B8;border:1.5px solid #E2E8F0;border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;cursor:pointer}
         .booking-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:200}
