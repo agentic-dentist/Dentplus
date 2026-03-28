@@ -50,6 +50,30 @@ interface Slot {
   date: string
 }
 
+interface TreatmentPlanItem {
+  id?: string
+  procedure_code: string
+  description: string
+  tooth_number: string
+  surface: string
+  fee: number
+  sort_order?: number
+}
+
+interface TreatmentPlan {
+  id: string
+  status: 'draft' | 'proposed' | 'approved' | 'in_progress' | 'completed'
+  title: string
+  notes: string | null
+  total_fee: number
+  patient_signature: string | null
+  patient_signed_at: string | null
+  signed_by_name: string | null
+  created_by_name: string | null
+  created_at: string
+  treatment_plan_items: TreatmentPlanItem[]
+}
+
 type ChartTab = 'overview' | 'appointments' | 'notes' | 'treatment-plan' | 'clinical' | 'billing'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -217,6 +241,63 @@ const CSS = `
   .coming-soon-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #94A3B8; }
   .coming-soon-sub   { font-size: 13px; color: #CBD5E1; text-align: center; max-width: 320px; line-height: 1.6; }
 
+  /* Treatment Plan tab */
+  .tp-topbar      { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .tp-title       { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: #0F172A; }
+  .btn-new-plan   { padding: 8px 16px; background: #0F172A; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .plan-card      { background: white; border: 1.5px solid #E2E8F0; border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
+  .plan-card.active-plan { border-color: #0EA5E9; }
+  .plan-card-header { padding: 16px 20px; border-bottom: 1px solid #F1F5F9; display: flex; align-items: center; justify-content: space-between; }
+  .plan-card-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: #0F172A; }
+  .plan-card-meta  { font-size: 12px; color: #94A3B8; margin-top: 3px; }
+  .plan-actions    { display: flex; gap: 8px; align-items: center; }
+  .proc-table     { width: 100%; border-collapse: collapse; }
+  .proc-table th  { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: #94A3B8; padding: 10px 16px; text-align: left; border-bottom: 1px solid #F1F5F9; }
+  .proc-table th.right { text-align: right; }
+  .proc-table td  { font-size: 13px; color: #334155; padding: 12px 16px; border-bottom: 1px solid #F8FAFC; vertical-align: top; }
+  .proc-table tr:last-child td { border-bottom: none; }
+  .proc-table td.right { text-align: right; font-weight: 600; color: #0F172A; }
+  .proc-code      { display: inline-block; padding: 2px 8px; background: #F1F5F9; border-radius: 6px; font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 3px; }
+  .proc-tooth     { font-size: 11px; color: #94A3B8; }
+  .plan-total     { padding: 14px 20px; border-top: 2px solid #F1F5F9; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+  .plan-total-label { font-size: 13px; color: #64748B; }
+  .plan-total-val   { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: #0F172A; }
+  .sig-section    { padding: 16px 20px; background: #F8FAFC; border-top: 1px solid #F1F5F9; }
+  .sig-approved   { background: #F0FDF4; border-top-color: #D1FAE5; }
+  .sig-label      { font-size: 12px; font-weight: 600; color: #0F172A; margin-bottom: 10px; }
+  .sig-input-wrap { display: flex; gap: 10px; align-items: flex-end; }
+  .sig-input      { flex: 1; padding: 10px 14px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 16px; font-family: 'Georgia', serif; font-style: italic; color: #0F172A; outline: none; background: white; }
+  .sig-input:focus { border-color: #059669; }
+  .btn-sign       { padding: 10px 20px; background: #059669; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+  .btn-sign:disabled { opacity: .5; cursor: not-allowed; }
+  .sig-done-text  { font-size: 14px; color: #059669; font-weight: 700; }
+  .sig-done-sub   { font-size: 12px; color: #6B7A99; margin-top: 4px; }
+  .sig-value      { font-size: 20px; color: #0F172A; font-family: 'Georgia', serif; font-style: italic; margin-top: 6px; }
+  .new-plan-form  { background: white; border: 1.5px solid #E2E8F0; border-radius: 14px; padding: 24px; margin-bottom: 20px; }
+  .np-field       { margin-bottom: 14px; }
+  .np-label       { display: block; font-size: 11px; font-weight: 600; color: #64748B; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px; }
+  .np-input       { width: 100%; padding: 9px 12px; border: 1.5px solid #E2E8F0; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; outline: none; }
+  .np-input:focus { border-color: #0EA5E9; }
+  .items-table    { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .items-table th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: #94A3B8; padding: 8px 8px; text-align: left; border-bottom: 1px solid #F1F5F9; }
+  .items-table td { padding: 5px 4px; vertical-align: middle; }
+  .items-table input, .items-table select { width: 100%; padding: 7px 8px; border: 1.5px solid #E2E8F0; border-radius: 7px; font-size: 12px; font-family: 'DM Sans', sans-serif; outline: none; }
+  .items-table input:focus, .items-table select:focus { border-color: #0EA5E9; }
+  .btn-add-row    { padding: 7px 14px; border: 1.5px dashed #E2E8F0; background: none; border-radius: 7px; font-size: 12px; color: #94A3B8; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .btn-add-row:hover { border-color: #0EA5E9; color: #0EA5E9; }
+  .btn-remove-row { width: 24px; height: 24px; border: none; background: #FEE2E2; border-radius: 50%; color: #DC2626; cursor: pointer; font-size: 14px; line-height: 1; }
+  .np-footer      { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; border-top: 1px solid #F1F5F9; margin-top: 8px; }
+  .np-total       { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; color: #0F172A; }
+  .np-total-label { font-size: 12px; color: #94A3B8; }
+  .np-actions     { display: flex; gap: 8px; }
+  .btn-save-plan  { padding: 9px 20px; background: #0F172A; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .btn-cancel-np  { padding: 9px 14px; background: none; color: #94A3B8; border: none; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .badge-draft      { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #F1F5F9; color: #64748B; }
+  .badge-proposed   { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #EFF6FF; color: #1D4ED8; }
+  .badge-approved   { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #D1FAE5; color: #059669; }
+  .badge-in_progress{ padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #FEF3C7; color: #D97706; }
+  .badge-completed  { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #F0FDF4; color: #16A34A; }
+
   /* Cancel / Reschedule modals */
   .modal-backdrop   { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 400; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -297,6 +378,18 @@ export default function PatientsPage() {
   const [rescheduling, setRescheduling]         = useState(false)
   const [rescheduleError, setRescheduleError]   = useState('')
 
+  // Treatment plans
+  const [plans, setPlans]               = useState<TreatmentPlan[]>([])
+  const [loadingPlans, setLoadingPlans] = useState(false)
+  const [showNewPlan, setShowNewPlan]   = useState(false)
+  const [savingPlan, setSavingPlan]     = useState(false)
+  const [signatureInputs, setSignatureInputs] = useState<Record<string, string>>({})
+  const [signingPlan, setSigningPlan]   = useState<string | null>(null)
+  const [newPlanTitle, setNewPlanTitle] = useState('Treatment Plan')
+  const [newPlanNotes, setNewPlanNotes] = useState('')
+  const [newPlanItems, setNewPlanItems] = useState([
+    { procedureCode: '', description: '', toothNumber: '', surface: '', fee: '' }
+  ])
 
   const supabase = createClient()
 
@@ -349,6 +442,7 @@ export default function PatientsPage() {
 
     loadNotes(p.id)
     loadAppts(p.id)
+    loadPlans(p.id)
   }
 
   const closeChart = () => { setSelected(null); setDetail(null) }
@@ -387,6 +481,105 @@ export default function PatientsPage() {
     setAppointments(data || [])
     setLoadingAppts(false)
   }
+
+  // Treatment plans
+  const loadPlans = async (patientId: string) => {
+    setLoadingPlans(true)
+    const res = await fetch(`/api/treatment-plans?patientId=${patientId}&clinicId=${clinicId}`)
+    const data = await res.json()
+    setPlans(data.plans || [])
+    setLoadingPlans(false)
+  }
+
+  const savePlan = async () => {
+    if (!selected) return
+    setSavingPlan(true)
+    const res = await fetch('/api/treatment-plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clinicId, patientId: selected.id,
+        createdBy: staffId, createdByName: staffName,
+        title: newPlanTitle, notes: newPlanNotes,
+        items: newPlanItems.filter(i => i.description.trim()),
+      })
+    })
+    const data = await res.json()
+    if (data.plan) {
+      setPlans(prev => [data.plan, ...prev])
+      setShowNewPlan(false)
+      setNewPlanTitle('Treatment Plan'); setNewPlanNotes('')
+      setNewPlanItems([{ procedureCode: '', description: '', toothNumber: '', surface: '', fee: '' }])
+    }
+    setSavingPlan(false)
+  }
+
+  const signPlan = async (planId: string) => {
+    const sig = signatureInputs[planId]?.trim()
+    if (!sig) return
+    setSigningPlan(planId)
+    const res = await fetch('/api/treatment-plans', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId, clinicId, action: 'sign', signature: sig, signedByName: selected?.full_name })
+    })
+    const data = await res.json()
+    if (data.plan) setPlans(prev => prev.map(p => p.id === planId ? data.plan : p))
+    setSigningPlan(null)
+  }
+
+  const updatePlanStatus = async (planId: string, status: string) => {
+    const res = await fetch('/api/treatment-plans', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId, clinicId, action: 'status', status })
+    })
+    const data = await res.json()
+    if (data.plan) setPlans(prev => prev.map(p => p.id === planId ? data.plan : p))
+  }
+
+  const deletePlan = async (planId: string) => {
+    if (!confirm('Delete this treatment plan?')) return
+    await fetch(`/api/treatment-plans?planId=${planId}&clinicId=${clinicId}`, { method: 'DELETE' })
+    setPlans(prev => prev.filter(p => p.id !== planId))
+  }
+
+  const addPlanItem = () => setNewPlanItems(prev => [...prev, { procedureCode: '', description: '', toothNumber: '', surface: '', fee: '' }])
+  const removePlanItem = (i: number) => setNewPlanItems(prev => prev.filter((_, idx) => idx !== i))
+  const updatePlanItem = (i: number, field: string, val: string) => setNewPlanItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: val } : item))
+
+  const newPlanTotal = newPlanItems.reduce((s, i) => s + (parseFloat(i.fee) || 0), 0)
+
+  const PLAN_STATUS_LABEL: Record<string, string> = {
+    draft: 'Draft', proposed: 'Proposed to patient',
+    approved: 'Patient approved', in_progress: 'In progress', completed: 'Completed',
+  }
+
+  const ADA_CODES = [
+    { code: 'D0120', desc: 'Periodic oral evaluation' },
+    { code: 'D0150', desc: 'Comprehensive oral evaluation' },
+    { code: 'D0210', desc: 'Full mouth X-rays' },
+    { code: 'D0274', desc: 'Bitewing X-rays' },
+    { code: 'D1110', desc: 'Adult prophylaxis (cleaning)' },
+    { code: 'D1120', desc: 'Child prophylaxis (cleaning)' },
+    { code: 'D2140', desc: 'Amalgam filling – 1 surface' },
+    { code: 'D2150', desc: 'Amalgam filling – 2 surfaces' },
+    { code: 'D2160', desc: 'Amalgam filling – 3 surfaces' },
+    { code: 'D2391', desc: 'Composite filling – 1 surface' },
+    { code: 'D2392', desc: 'Composite filling – 2 surfaces' },
+    { code: 'D2740', desc: 'Crown – porcelain/ceramic' },
+    { code: 'D2750', desc: 'Crown – porcelain/metal' },
+    { code: 'D3310', desc: 'Root canal – anterior' },
+    { code: 'D3330', desc: 'Root canal – molar' },
+    { code: 'D4341', desc: 'Scaling & root planing – 4+ teeth' },
+    { code: 'D4910', desc: 'Periodontal maintenance' },
+    { code: 'D5110', desc: 'Complete upper denture' },
+    { code: 'D5120', desc: 'Complete lower denture' },
+    { code: 'D6010', desc: 'Implant placement' },
+    { code: 'D7140', desc: 'Extraction – simple' },
+    { code: 'D7210', desc: 'Extraction – surgical' },
+    { code: 'D9944', desc: 'Occlusal guard (night guard)' },
+  ]
 
   // Approve / reject
   const updateStatus = async (status: string) => {
@@ -708,7 +901,208 @@ export default function PatientsPage() {
       case 'overview':       return <TabOverview />
       case 'appointments':   return <TabAppointments />
       case 'notes':          return <TabNotes />
-      case 'treatment-plan': return <ComingSoon icon="◉" title="Treatment Planning" sub="Procedure codes (ADA/CDA), cost estimates, and patient approval signatures — coming next build." />
+      case 'treatment-plan': return (
+        <>
+          <div className="tp-topbar">
+            <div className="tp-title">Treatment Plans</div>
+            {(staffRole === 'dentist' || staffRole === 'owner') && (
+              <button className="btn-new-plan" onClick={() => setShowNewPlan(v => !v)}>
+                {showNewPlan ? '✕ Cancel' : '+ New plan'}
+              </button>
+            )}
+          </div>
+
+          {/* New plan form */}
+          {showNewPlan && (
+            <div className="new-plan-form">
+              <div className="np-field">
+                <label className="np-label">Plan title</label>
+                <input className="np-input" value={newPlanTitle} onChange={e => setNewPlanTitle(e.target.value)} placeholder="e.g. Restorative treatment 2026" />
+              </div>
+
+              <div className="np-field">
+                <label className="np-label">Procedures</label>
+                <table className="items-table">
+                  <thead>
+                    <tr>
+                      <th style={{width:130}}>ADA Code</th>
+                      <th>Description</th>
+                      <th style={{width:60}}>Tooth</th>
+                      <th style={{width:60}}>Surface</th>
+                      <th style={{width:80}}>Fee ($)</th>
+                      <th style={{width:32}}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newPlanItems.map((item, i) => (
+                      <tr key={i}>
+                        <td>
+                          <select value={item.procedureCode} onChange={e => {
+                            const ada = ADA_CODES.find(a => a.code === e.target.value)
+                            updatePlanItem(i, 'procedureCode', e.target.value)
+                            if (ada && !newPlanItems[i].description) updatePlanItem(i, 'description', ada.desc)
+                          }}>
+                            <option value="">Select…</option>
+                            {ADA_CODES.map(a => <option key={a.code} value={a.code}>{a.code}</option>)}
+                          </select>
+                        </td>
+                        <td><input value={item.description} onChange={e => updatePlanItem(i, 'description', e.target.value)} placeholder="Description" /></td>
+                        <td><input value={item.toothNumber} onChange={e => updatePlanItem(i, 'toothNumber', e.target.value)} placeholder="#" /></td>
+                        <td><input value={item.surface} onChange={e => updatePlanItem(i, 'surface', e.target.value)} placeholder="MOD" /></td>
+                        <td><input type="number" value={item.fee} onChange={e => updatePlanItem(i, 'fee', e.target.value)} placeholder="0.00" min="0" step="0.01" /></td>
+                        <td><button className="btn-remove-row" onClick={() => removePlanItem(i)}>×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button className="btn-add-row" onClick={addPlanItem}>+ Add procedure</button>
+              </div>
+
+              <div className="np-field">
+                <label className="np-label">Clinical notes (optional)</label>
+                <textarea className="np-input" rows={2} style={{resize:'vertical'}} value={newPlanNotes} onChange={e => setNewPlanNotes(e.target.value)} placeholder="Additional notes for the patient…" />
+              </div>
+
+              <div className="np-footer">
+                <div>
+                  <div className="np-total-label">Estimated total</div>
+                  <div className="np-total">${newPlanTotal.toFixed(2)} CAD</div>
+                </div>
+                <div className="np-actions">
+                  <button className="btn-cancel-np" onClick={() => setShowNewPlan(false)}>Cancel</button>
+                  <button className="btn-save-plan" onClick={savePlan} disabled={savingPlan}>
+                    {savingPlan ? 'Saving…' : 'Save plan'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Plans list */}
+          {loadingPlans ? (
+            <div className="no-data" style={{padding:'32px 0'}}>Loading plans…</div>
+          ) : plans.length === 0 ? (
+            <div className="card-box"><div className="no-data" style={{padding:'20px 0',textAlign:'center'}}>No treatment plans yet</div></div>
+          ) : plans.map(plan => (
+            <div key={plan.id} className={`plan-card ${plan.status === 'approved' || plan.status === 'in_progress' ? 'active-plan' : ''}`}>
+              <div className="plan-card-header">
+                <div>
+                  <div className="plan-card-title">{plan.title}</div>
+                  <div className="plan-card-meta">
+                    By {plan.created_by_name || 'Staff'} · {new Date(plan.created_at).toLocaleDateString('en-CA', {month:'short',day:'numeric',year:'numeric'})}
+                  </div>
+                </div>
+                <div className="plan-actions">
+                  <span className={`badge-${plan.status}`}>{PLAN_STATUS_LABEL[plan.status]}</span>
+                  {plan.status === 'draft' && (staffRole === 'dentist' || staffRole === 'owner') && (
+                    <button style={{padding:'5px 12px',border:'1.5px solid #E2E8F0',borderRadius:6,fontSize:12,background:'white',color:'#334155',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                      onClick={() => updatePlanStatus(plan.id, 'proposed')}>
+                      Send to patient
+                    </button>
+                  )}
+                  {plan.status === 'approved' && (staffRole === 'dentist' || staffRole === 'owner') && (
+                    <button style={{padding:'5px 12px',border:'1.5px solid #FDE68A',borderRadius:6,fontSize:12,background:'#FEF3C7',color:'#D97706',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                      onClick={() => updatePlanStatus(plan.id, 'in_progress')}>
+                      Start treatment
+                    </button>
+                  )}
+                  {plan.status === 'in_progress' && (staffRole === 'dentist' || staffRole === 'owner') && (
+                    <button style={{padding:'5px 12px',border:'1.5px solid #BBF7D0',borderRadius:6,fontSize:12,background:'#D1FAE5',color:'#059669',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                      onClick={() => updatePlanStatus(plan.id, 'completed')}>
+                      Mark complete
+                    </button>
+                  )}
+                  {plan.status === 'draft' && (staffRole === 'dentist' || staffRole === 'owner') && (
+                    <button style={{padding:'5px 10px',border:'1.5px solid #FECACA',borderRadius:6,fontSize:12,background:'#FEF2F2',color:'#DC2626',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}
+                      onClick={() => deletePlan(plan.id)}>
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Procedure table */}
+              {plan.treatment_plan_items && plan.treatment_plan_items.length > 0 && (
+                <table className="proc-table">
+                  <thead>
+                    <tr>
+                      <th>Code &amp; description</th>
+                      <th>Tooth / Surface</th>
+                      <th className="right">Fee</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...plan.treatment_plan_items].sort((a,b) => (a.sort_order||0)-(b.sort_order||0)).map(item => (
+                      <tr key={item.id}>
+                        <td>
+                          {item.procedure_code && <div className="proc-code">{item.procedure_code}</div>}
+                          <div>{item.description}</div>
+                        </td>
+                        <td>
+                          <div className="proc-tooth">
+                            {[item.tooth_number && `Tooth #${item.tooth_number}`, item.surface].filter(Boolean).join(' · ') || '—'}
+                          </div>
+                        </td>
+                        <td className="right">${(item.fee || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {plan.notes && (
+                <div style={{padding:'12px 16px',fontSize:13,color:'#475569',background:'#FAFAFA',borderTop:'1px solid #F1F5F9'}}>
+                  <span style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',marginRight:8}}>Notes</span>
+                  {plan.notes}
+                </div>
+              )}
+
+              {/* Total */}
+              <div className="plan-total">
+                <span className="plan-total-label">Estimated total</span>
+                <span className="plan-total-val">${(plan.total_fee || 0).toFixed(2)} CAD</span>
+              </div>
+
+              {/* Signature section */}
+              {plan.status === 'proposed' && (
+                <div className="sig-section">
+                  <div className="sig-label">Patient approval signature</div>
+                  <div className="sig-input-wrap">
+                    <input
+                      className="sig-input"
+                      placeholder="Patient types full name to approve…"
+                      value={signatureInputs[plan.id] || ''}
+                      onChange={e => setSignatureInputs(prev => ({...prev, [plan.id]: e.target.value}))}
+                    />
+                    <button className="btn-sign" disabled={!signatureInputs[plan.id]?.trim() || signingPlan === plan.id}
+                      onClick={() => signPlan(plan.id)}>
+                      {signingPlan === plan.id ? 'Saving…' : 'Approve plan ✓'}
+                    </button>
+                  </div>
+                  <div style={{fontSize:11,color:'#94A3B8',marginTop:8}}>
+                    By typing their name above, the patient electronically approves this treatment plan and authorizes the clinic to proceed.
+                  </div>
+                </div>
+              )}
+
+              {plan.status === 'approved' && plan.patient_signature && (
+                <div className="sig-section sig-approved">
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:20}}>✅</span>
+                    <div>
+                      <div className="sig-done-text">Patient approved this plan</div>
+                      <div className="sig-done-sub">
+                        Signed: {new Date(plan.patient_signed_at!).toLocaleDateString('en-CA', {month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="sig-value">{plan.patient_signature}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )
       case 'clinical':       return <ComingSoon icon="⬡" title="Clinical" sub="Prescriptions, lab orders, and X-ray attachments — coming soon." />
       case 'billing':        return <ComingSoon icon="◎" title="Billing" sub="Invoices, payment tracking, and insurance coverage breakdown — coming soon." />
     }
