@@ -19,7 +19,7 @@ interface PlatformStats {
 
 const PLAN_STYLE: Record<string, { bg: string; color: string }> = {
   trial:      { bg: '#FEF3C7', color: '#D97706' },
-  starter:    { bg: '#EFF6FF', color: '#0EA5E9' },
+  starter:    { bg: '#EEF2FF', color: '#4F46E5' },
   pro:        { bg: '#F0FDF4', color: '#10B981' },
   enterprise: { bg: '#FDF4FF', color: '#7C3AED' },
 }
@@ -118,14 +118,14 @@ export default function SuperAdminPage() {
       <>
         <style>{`
           *{box-sizing:border-box;margin:0;padding:0}
-          body{font-family:'DM Sans',sans-serif;background:#0F172A;min-height:100vh;display:flex;align-items:center;justify-content:center}
-          .card{background:white;border-radius:16px;padding:40px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+          body{font-family:'Inter',sans-serif;background:#F1F5F9;min-height:100vh;display:flex;align-items:center;justify-content:center}
+          .card{background:white;border-radius:16px;padding:40px;width:360px;border:1px solid #E2E8F0;box-shadow:0 4px 24px rgba(0,0,0,.06)}
           .logo{font-size:20px;font-weight:700;color:#0F172A;text-align:center;margin-bottom:4px}
           .sub{font-size:13px;color:#94A3B8;text-align:center;margin-bottom:28px}
           label{display:block;font-size:12px;font-weight:500;color:#64748B;margin-bottom:5px}
           input{width:100%;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:14px;outline:none;font-family:inherit}
-          input:focus{border-color:#0F172A}
-          .btn{width:100%;padding:11px;background:#0F172A;color:white;border-radius:8px;font-size:14px;font-weight:500;border:none;cursor:pointer;margin-top:12px;font-family:inherit;transition:opacity .15s}
+          input:focus{border-color:#4F46E5}
+          .btn{width:100%;padding:11px;background:#4F46E5;color:white;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;margin-top:12px;font-family:inherit;transition:opacity .15s}
           .btn:disabled{opacity:.6;cursor:not-allowed}
           .err{color:#DC2626;font-size:12px;margin-top:8px;text-align:center}
         `}</style>
@@ -149,15 +149,15 @@ export default function SuperAdminPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=JetBrains+Mono:wght@400&family=DM+Sans:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'DM Sans',sans-serif;background:#0F172A;min-height:100vh}
+        body{font-family:'Inter',sans-serif;background:#F1F5F9;min-height:100vh}
         .layout{display:flex;min-height:100vh}
-        .sidebar{width:220px;background:#0F172A;flex-shrink:0;padding:24px 16px;display:flex;flex-direction:column;position:fixed;top:0;bottom:0}
-        .logo{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:white;margin-bottom:2px}
+        .sidebar{width:220px;background:#FFFFFF;border-right:1px solid #E2E8F0;flex-shrink:0;padding:20px 14px;display:flex;flex-direction:column;position:fixed;top:0;bottom:0}
+        .logo{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0F172A;margin-bottom:2px}
         .logo-sub{font-size:10px;color:rgba(148,163,184,.4);letter-spacing:1px;text-transform:uppercase;margin-bottom:28px}
-        .nav-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:rgba(148,163,184,.6);transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif}
-        .nav-item:hover{background:rgba(255,255,255,.05);color:#CBD5E1}
-        .nav-item.active{background:rgba(14,165,233,.1);color:#0EA5E9}
-        .main{margin-left:220px;flex:1;padding:32px;background:#F0F4F8;min-height:100vh}
+        .nav-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:#334155;font-weight:500;transition:all .12s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif}
+        .nav-item:hover{background:#F8FAFC;color:#0F172A}
+        .nav-item.active{background:#EEF2FF;color:#4F46E5;font-weight:600;border-left:3px solid #4F46E5;padding-left:9px}
+        .main{margin-left:220px;flex:1;padding:32px;background:#F1F5F9;min-height:100vh}
         .page-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:#0F172A;margin-bottom:4px}
         .page-sub{font-size:13px;color:#94A3B8;margin-bottom:24px}
         .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
@@ -167,14 +167,14 @@ export default function SuperAdminPage() {
         .card{background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;margin-bottom:16px}
         .card-header{padding:14px 20px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between}
         .card-title{font-size:13px;font-weight:600;color:#0F172A}
-        .search-input{padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;width:220px}
-        .search-input:focus{border-color:#0EA5E9}
+        .search-input{padding:7px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:220px}
+        .search-input:focus{border-color:#4F46E5}
         .clinic-table{width:100%;border-collapse:collapse}
         .th{padding:10px 16px;font-size:11px;font-weight:600;color:#94A3B8;text-align:left;border-bottom:1px solid #F1F5F9;background:#FAFBFC;text-transform:uppercase;letter-spacing:.3px}
         .tr{border-bottom:1px solid #F8FAFC;cursor:pointer;transition:background .1s}
         .tr:last-child{border-bottom:none}
         .tr:hover{background:#FAFBFC}
-        .tr.sel{background:#F0F9FF}
+        .tr.sel{background:#EEF2FF}
         .td{padding:11px 16px;font-size:13px;color:#0F172A;vertical-align:middle}
         .clinic-name{font-weight:500}
         .clinic-slug{font-size:11px;color:#94A3B8;font-family:'JetBrains Mono',monospace}
@@ -183,8 +183,8 @@ export default function SuperAdminPage() {
         .active-dot{width:6px;height:6px;border-radius:50%;background:#10B981;display:inline-block;margin-right:5px}
         .inactive-dot{width:6px;height:6px;border-radius:50%;background:#CBD5E1;display:inline-block;margin-right:5px}
         .action-bar{display:flex;gap:8px;padding:12px 20px;border-top:1px solid #F1F5F9;flex-wrap:wrap;align-items:center;background:#F8FAFC}
-        .action-btn{padding:7px 14px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;font-weight:500;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
-        .action-btn:hover{border-color:#0EA5E9;color:#0EA5E9}
+        .action-btn{padding:7px 14px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;font-weight:500;color:#64748B;background:white;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}
+        .action-btn:hover{border-color:#4F46E5;color:#4F46E5}
         .action-btn.primary{background:#0F172A;color:white;border-color:#0F172A}
         .action-btn.primary:hover{background:#1E293B}
         .action-msg{font-size:12px;color:#10B981;font-weight:600}
@@ -193,13 +193,13 @@ export default function SuperAdminPage() {
         .cost-title{font-size:11px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
         .cost-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #F8FAFC;font-size:13px}
         .cost-row:last-child{border-bottom:none}
-        .cost-total{font-weight:700;color:#0EA5E9}
+        .cost-total{font-weight:700;color:#4F46E5}
         .log-row{display:flex;align-items:center;gap:12px;padding:9px 20px;border-bottom:1px solid #F8FAFC;font-size:12px}
         .log-row:last-child{border-bottom:none}
         .log-action{font-weight:500;color:#0F172A;min-width:200px;text-transform:capitalize}
         .log-clinic{color:#64748B;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:120px}
         .log-time{color:#CBD5E1;font-family:'JetBrains Mono',monospace;font-size:11px;margin-left:auto;white-space:nowrap}
-        .refresh-btn{padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;color:#64748B;background:white;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .refresh-btn{padding:6px 12px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:12px;color:#64748B;background:white;cursor:pointer;font-family:'Inter',sans-serif}
         .refresh-btn:hover{background:#F8FAFC}
         .empty{padding:48px;text-align:center;color:#CBD5E1;font-size:13px}
         .loading{padding:48px;text-align:center;color:#CBD5E1;font-size:13px}
@@ -231,11 +231,11 @@ export default function SuperAdminPage() {
               <div className="page-sub">DentPlus — all clinics, all activity</div>
               <div className="stats-grid">
                 {[
-                  { val: stats?.total_clinics,         label: 'Total clinics',        color: '#0EA5E9' },
+                  { val: stats?.total_clinics,         label: 'Total clinics',        color: '#4F46E5' },
                   { val: stats?.active_clinics,        label: 'Active (7 days)',       color: '#10B981' },
                   { val: stats?.total_patients,        label: 'Total patients',        color: '#6366F1' },
                   { val: stats?.total_appointments,    label: 'Total appointments',    color: '#F59E0B' },
-                  { val: stats?.total_ai_bookings,     label: 'AI bookings',           color: '#0EA5E9' },
+                  { val: stats?.total_ai_bookings,     label: 'AI bookings',           color: '#4F46E5' },
                   { val: stats?.total_matchmaker_runs, label: 'Matchmaker runs',       color: '#7C3AED' },
                   { val: stats?.total_reminders,       label: 'Reminders sent',        color: '#10B981' },
                   { val: `$${stats?.estimated_monthly_cost.toFixed(2)}`, label: 'Est. AI cost (total)', color: '#F43F5E' },

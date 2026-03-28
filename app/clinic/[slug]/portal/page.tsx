@@ -51,6 +51,39 @@ interface Referral {
   notes: string | null
 }
 
+interface InvoiceItem {
+  id: string
+  description: string
+  procedure_code: string | null
+  tooth_number: string | null
+  fee: number
+  insurance_covers: number
+  patient_portion: number
+}
+interface InvoicePayment {
+  id: string
+  amount: number
+  method: string
+  reference: string | null
+  paid_at: string
+}
+interface Invoice {
+  id: string
+  invoice_number: string
+  status: string
+  notes: string | null
+  subtotal: number
+  insurance_amount: number
+  patient_amount: number
+  amount_paid: number
+  balance_due: number
+  due_date: string | null
+  created_by_name: string | null
+  created_at: string
+  invoice_items: InvoiceItem[]
+  invoice_payments: InvoicePayment[]
+}
+
 interface TreatmentPlanItem {
   id: string
   procedure_code: string
@@ -91,7 +124,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [isApproved, setIsApproved] = useState<boolean | null>(null)
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
-  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes' | 'plans'>('appointments')
+  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes' | 'plans' | 'invoices'>('appointments')
   const [loading, setLoading] = useState(true)
   const [waitlistLoading, setWaitlistLoading] = useState(false)
   const [waitlistDone, setWaitlistDone] = useState(false)
@@ -107,6 +140,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [offerResponding, setOfferResponding] = useState(false)
   const [referrals, setReferrals] = useState<Referral[]>([])
   const [plans, setPlans]           = useState<TreatmentPlan[]>([])
+  const [invoices, setInvoices]     = useState<Invoice[]>([])
   const [planSignatures, setPlanSignatures] = useState<Record<string, string>>({})
   const [signingPlan, setSigningPlan] = useState<string | null>(null)
   const [portalClinicId, setPortalClinicId] = useState<string>('')
@@ -205,6 +239,16 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .in('status', ['proposed', 'approved', 'in_progress', 'completed'])
         .order('created_at', { ascending: false })
       setPlans(plansData || [])
+
+      // Load invoices
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select(`id, invoice_number, status, notes, subtotal, insurance_amount, patient_amount, amount_paid, balance_due, due_date, created_by_name, created_at, invoice_items(id, description, procedure_code, tooth_number, fee, insurance_covers, patient_portion), invoice_payments(id, amount, method, reference, paid_at)`)
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .in('status', ['sent', 'partial', 'paid', 'overdue'])
+        .order('created_at', { ascending: false })
+      setInvoices(invoicesData || [])
       setPortalClinicId(account.clinic_id || '')
 
       setLoading(false)
@@ -384,6 +428,7 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
     { icon: '→', label: 'Referrals', key: 'referrals' },
     { icon: '◎', label: 'Visit notes', key: 'notes' },
     { icon: '◉', label: 'Treatment plans', key: 'plans' },
+    { icon: '◎', label: 'Invoices', key: 'invoices' },
   ]
 
   const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
@@ -685,6 +730,100 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
                             {plan.patient_signed_at && <span> · {new Date(plan.patient_signed_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}</span>}
                           </div>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          ) : tab === 'invoices' ? (
+            <>
+              {invoices.length === 0 ? (
+                <div className="empty">No invoices on file yet</div>
+              ) : invoices.map(inv => {
+                const isPaid    = inv.balance_due <= 0
+                const isPartial = inv.amount_paid > 0 && !isPaid
+                const statusColor = isPaid ? '#059669' : isPartial ? '#D97706' : inv.status === 'overdue' ? '#DC2626' : '#4F46E5'
+                const statusBg    = isPaid ? '#D1FAE5' : isPartial ? '#FEF3C7' : inv.status === 'overdue' ? '#FEE2E2' : '#EEF2FF'
+                const statusLabel = isPaid ? 'Paid' : isPartial ? 'Partial payment' : inv.status === 'overdue' ? 'Overdue' : 'Payment due'
+                return (
+                  <div key={inv.id} className="card" style={{marginBottom:14}}>
+                    {/* Invoice header */}
+                    <div style={{padding:'14px 20px',borderBottom:'1px solid #F1F5F9',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:700,color:'#0F172A',fontFamily:"'Syne',sans-serif"}}>{inv.invoice_number}</div>
+                        <div style={{fontSize:12,color:'#94A3B8',marginTop:2}}>
+                          {new Date(inv.created_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}
+                          {inv.due_date && ` · Due: ${new Date(inv.due_date + 'T12:00:00').toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}`}
+                        </div>
+                      </div>
+                      <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,background:statusBg,color:statusColor}}>
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {/* Line items */}
+                    {inv.invoice_items && inv.invoice_items.length > 0 && (
+                      <table style={{width:'100%',borderCollapse:'collapse'}}>
+                        <thead>
+                          <tr style={{background:'#FAFAFA'}}>
+                            <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',padding:'8px 20px',textAlign:'left'}}>Procedure</th>
+                            <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',padding:'8px 20px',textAlign:'right'}}>Your portion</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inv.invoice_items.map(item => (
+                            <tr key={item.id} style={{borderTop:'1px solid #F8FAFC'}}>
+                              <td style={{padding:'10px 20px',fontSize:13,color:'#334155'}}>
+                                {item.procedure_code && <span style={{display:'inline-block',padding:'1px 7px',background:'#F1F5F9',borderRadius:5,fontSize:10,fontWeight:600,color:'#475569',marginRight:8}}>{item.procedure_code}</span>}
+                                {item.description}
+                                {item.tooth_number && <span style={{fontSize:11,color:'#94A3B8',marginLeft:6}}>Tooth #{item.tooth_number}</span>}
+                              </td>
+                              <td style={{padding:'10px 20px',fontSize:13,fontWeight:600,color:'#0F172A',textAlign:'right'}}>${(item.patient_portion||0).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {/* Summary */}
+                    <div style={{padding:'12px 20px',borderTop:'1px solid #F1F5F9',background:'#FAFAFA'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#64748B',marginBottom:4}}>
+                        <span>Insurance covers</span>
+                        <span style={{color:'#059669',fontWeight:500}}>−${(inv.insurance_amount||0).toFixed(2)}</span>
+                      </div>
+                      {inv.amount_paid > 0 && (
+                        <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#64748B',marginBottom:4}}>
+                          <span>Already paid</span>
+                          <span style={{color:'#059669',fontWeight:500}}>−${(inv.amount_paid||0).toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,paddingTop:8,borderTop:'1px solid #E2E8F0'}}>
+                        <span style={{fontSize:14,fontWeight:700,color:'#0F172A'}}>Balance due</span>
+                        <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:800,color: isPaid ? '#059669' : '#0F172A'}}>
+                          {isPaid ? '✓ Paid' : `$${(inv.balance_due||0).toFixed(2)}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    {inv.notes && (
+                      <div style={{padding:'10px 20px',fontSize:13,color:'#475569',borderTop:'1px solid #F1F5F9'}}>
+                        <span style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',marginRight:8}}>Notes</span>
+                        {inv.notes}
+                      </div>
+                    )}
+
+                    {/* Payment history */}
+                    {inv.invoice_payments && inv.invoice_payments.length > 0 && (
+                      <div style={{padding:'12px 20px',background:'#F0FDF4',borderTop:'1px solid #BBF7D0'}}>
+                        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#059669',marginBottom:6}}>Payments received</div>
+                        {inv.invoice_payments.map(pay => (
+                          <div key={pay.id} style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#334155',padding:'2px 0'}}>
+                            <span>{new Date(pay.paid_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})} · {pay.method}</span>
+                            <span style={{fontWeight:600,color:'#059669'}}>${(pay.amount||0).toFixed(2)}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
