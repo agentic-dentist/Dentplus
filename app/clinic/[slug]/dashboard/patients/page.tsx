@@ -1065,22 +1065,11 @@ export default function PatientsPage() {
 
               {/* Signature section */}
               {plan.status === 'proposed' && (
-                <div className="sig-section">
-                  <div className="sig-label">Patient approval signature</div>
-                  <div className="sig-input-wrap">
-                    <input
-                      className="sig-input"
-                      placeholder="Patient types full name to approve…"
-                      value={signatureInputs[plan.id] || ''}
-                      onChange={e => setSignatureInputs(prev => ({...prev, [plan.id]: e.target.value}))}
-                    />
-                    <button className="btn-sign" disabled={!signatureInputs[plan.id]?.trim() || signingPlan === plan.id}
-                      onClick={() => signPlan(plan.id)}>
-                      {signingPlan === plan.id ? 'Saving…' : 'Approve plan ✓'}
-                    </button>
-                  </div>
-                  <div style={{fontSize:11,color:'#94A3B8',marginTop:8}}>
-                    By typing their name above, the patient electronically approves this treatment plan and authorizes the clinic to proceed.
+                <div className="sig-section" style={{display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{width:32,height:32,borderRadius:'50%',background:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16}}>⏳</div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:'#1D4ED8'}}>Waiting for patient signature</div>
+                    <div style={{fontSize:12,color:'#6B7A99',marginTop:2}}>The patient will review and sign this plan from their portal at <strong>{selected?.email}</strong></div>
                   </div>
                 </div>
               )}

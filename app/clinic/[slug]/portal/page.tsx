@@ -51,6 +51,28 @@ interface Referral {
   notes: string | null
 }
 
+interface TreatmentPlanItem {
+  id: string
+  procedure_code: string
+  description: string
+  tooth_number: string | null
+  surface: string | null
+  fee: number
+  sort_order: number
+}
+interface TreatmentPlan {
+  id: string
+  status: string
+  title: string
+  notes: string | null
+  total_fee: number
+  patient_signature: string | null
+  patient_signed_at: string | null
+  created_by_name: string | null
+  created_at: string
+  treatment_plan_items: TreatmentPlanItem[]
+}
+
 interface Message { role: 'user' | 'assistant'; content: string }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -69,7 +91,7 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [isApproved, setIsApproved] = useState<boolean | null>(null)
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
   const [past, setPast] = useState<Appointment[]>([])
-  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes'>('appointments')
+  const [tab, setTab] = useState<'appointments' | 'profile' | 'waiting' | 'referrals' | 'notes' | 'plans'>('appointments')
   const [loading, setLoading] = useState(true)
   const [waitlistLoading, setWaitlistLoading] = useState(false)
   const [waitlistDone, setWaitlistDone] = useState(false)
@@ -84,6 +106,10 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
   const [waitlistOffer, setWaitlistOffer] = useState<WaitlistOffer | null>(null)
   const [offerResponding, setOfferResponding] = useState(false)
   const [referrals, setReferrals] = useState<Referral[]>([])
+  const [plans, setPlans]           = useState<TreatmentPlan[]>([])
+  const [planSignatures, setPlanSignatures] = useState<Record<string, string>>({})
+  const [signingPlan, setSigningPlan] = useState<string | null>(null)
+  const [portalClinicId, setPortalClinicId] = useState<string>('')
   const [treatmentNotes, setTreatmentNotes] = useState<TreatmentNote[]>([])
   const [downloadingPDF, setDownloadingPDF] = useState(false)
   const [showBooking, setShowBooking] = useState(false)
@@ -169,6 +195,17 @@ export default function PatientPortal({ params }: { params: Promise<{ slug: stri
         .eq('from_clinic_id', account.clinic_id).eq('patient_id', account.patient_id)
         .order('created_at', { ascending: false })
       setReferrals(refData || [])
+
+      // Load treatment plans
+      const { data: plansData } = await supabase
+        .from('treatment_plans')
+        .select(`id, status, title, notes, total_fee, patient_signature, patient_signed_at, created_by_name, created_at, treatment_plan_items(id, procedure_code, description, tooth_number, surface, fee, sort_order)`)
+        .eq('clinic_id', account.clinic_id)
+        .eq('patient_id', account.patient_id)
+        .in('status', ['proposed', 'approved', 'in_progress', 'completed'])
+        .order('created_at', { ascending: false })
+      setPlans(plansData || [])
+      setPortalClinicId(account.clinic_id || '')
 
       setLoading(false)
     }
@@ -326,12 +363,27 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
 </body></html>`
   }
 
+  const signPlan = async (planId: string, clinicId: string) => {
+    const sig = planSignatures[planId]?.trim()
+    if (!sig) return
+    setSigningPlan(planId)
+    const res = await fetch('/api/treatment-plans', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId, clinicId, action: 'sign', signature: sig, signedByName: patient?.full_name })
+    })
+    const data = await res.json()
+    if (data.plan) setPlans(prev => prev.map(p => p.id === planId ? data.plan : p))
+    setSigningPlan(null)
+  }
+
   const NAV = [
     { icon: '▦', label: 'Appointments', key: 'appointments' },
     { icon: '◈', label: 'My info', key: 'profile' },
     { icon: '◷', label: 'Waitlist', key: 'waiting' },
     { icon: '→', label: 'Referrals', key: 'referrals' },
     { icon: '◎', label: 'Visit notes', key: 'notes' },
+    { icon: '◉', label: 'Treatment plans', key: 'plans' },
   ]
 
   const CHIPS = ['Book a cleaning', 'I have tooth pain', 'Cancel appointment', 'Prendre rendez-vous']
@@ -520,6 +572,124 @@ ${data.appointments?.length>0?`${sec('5','Appointment History')}<table class="ap
             <>{treatmentNotes.length === 0 ? <div className="empty">No visit notes on file yet</div> : <div className="card">{treatmentNotes.map(note => (<div key={note.id} className="apt-row"><div className="apt-bar" style={{ background: '#6366F1' }} /><div className="apt-info"><div className="apt-type">{note.appointment_type || 'Visit'}</div><div className="apt-time">{new Date(note.visit_date + 'T12:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}{note.written_by_name ? ' · ' + note.written_by_name : ''}</div>{note.findings && <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>{note.findings}</div>}</div></div>))}</div>}</>
           ) : tab === 'referrals' ? (
             <>{referrals.length === 0 ? <div className="empty">No referrals on file yet</div> : <div className="card">{referrals.map(r => (<div key={r.id} className="apt-row"><div className="apt-bar" style={{ background: '#6366F1' }} /><div className="apt-info"><div className="apt-type">{r.specialty} — {r.specialist_name}</div><div className="apt-time">{new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}</div></div><span className="apt-badge badge-upcoming">{r.status}</span></div>))}</div>}</>
+          ) : tab === 'plans' ? (
+            <>
+              {plans.length === 0 ? (
+                <div className="empty">No treatment plans on file yet</div>
+              ) : plans.map(plan => {
+                const clinicId = plan.id // we need clinic_id — fetch from supabase context
+                return (
+                  <div key={plan.id} className="card" style={{marginBottom:14,overflow:'hidden',borderRadius:12}}>
+                    {/* Plan header */}
+                    <div style={{padding:'14px 16px',borderBottom:'1px solid #F1F5F9',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:700,color:'#0F172A'}}>{plan.title}</div>
+                        <div style={{fontSize:12,color:'#94A3B8',marginTop:2}}>
+                          From {plan.created_by_name || 'your clinic'} · {new Date(plan.created_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}
+                        </div>
+                      </div>
+                      <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,
+                        background: plan.status==='proposed'?'#EFF6FF':plan.status==='approved'?'#D1FAE5':plan.status==='in_progress'?'#FEF3C7':'#F0FDF4',
+                        color: plan.status==='proposed'?'#1D4ED8':plan.status==='approved'?'#059669':plan.status==='in_progress'?'#D97706':'#16A34A'
+                      }}>
+                        {plan.status==='proposed'?'Awaiting your approval':plan.status==='approved'?'Approved':plan.status==='in_progress'?'In progress':'Completed'}
+                      </span>
+                    </div>
+
+                    {/* Procedures */}
+                    {plan.treatment_plan_items && plan.treatment_plan_items.length > 0 && (
+                      <table style={{width:'100%',borderCollapse:'collapse'}}>
+                        <thead>
+                          <tr style={{background:'#F8FAFC'}}>
+                            <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',padding:'8px 16px',textAlign:'left'}}>Procedure</th>
+                            <th style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',padding:'8px 16px',textAlign:'right'}}>Fee</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...plan.treatment_plan_items].sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).map(item => (
+                            <tr key={item.id} style={{borderTop:'1px solid #F8FAFC'}}>
+                              <td style={{padding:'10px 16px',fontSize:13,color:'#334155'}}>
+                                {item.procedure_code && <span style={{display:'inline-block',padding:'1px 7px',background:'#F1F5F9',borderRadius:5,fontSize:11,fontWeight:600,color:'#475569',marginRight:8}}>{item.procedure_code}</span>}
+                                {item.description}
+                                {item.tooth_number && <span style={{fontSize:11,color:'#94A3B8',marginLeft:8}}>Tooth #{item.tooth_number}</span>}
+                              </td>
+                              <td style={{padding:'10px 16px',fontSize:13,fontWeight:600,color:'#0F172A',textAlign:'right'}}>${(item.fee||0).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {plan.notes && (
+                      <div style={{padding:'10px 16px',fontSize:13,color:'#475569',background:'#FAFAFA',borderTop:'1px solid #F1F5F9'}}>
+                        <span style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'#94A3B8',marginRight:8}}>Notes</span>
+                        {plan.notes}
+                      </div>
+                    )}
+
+                    {/* Total */}
+                    <div style={{padding:'12px 16px',borderTop:'2px solid #F1F5F9',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:10}}>
+                      <span style={{fontSize:13,color:'#64748B'}}>Estimated total</span>
+                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:800,color:'#0F172A'}}>${(plan.total_fee||0).toFixed(2)} CAD</span>
+                    </div>
+
+                    {/* Signature — only for proposed plans */}
+                    {plan.status === 'proposed' && (
+                      <div style={{padding:'16px',background:'#F0F9FF',borderTop:'1px solid #BAE6FD'}}>
+                        <div style={{fontSize:13,fontWeight:600,color:'#0F172A',marginBottom:4}}>Your approval is needed</div>
+                        <div style={{fontSize:12,color:'#6B7A99',marginBottom:12}}>
+                          Review the procedures and fees above. Type your full name below to electronically approve this treatment plan.
+                        </div>
+                        <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                          <input
+                            style={{flex:1,padding:'10px 14px',border:'1.5px solid #BAE6FD',borderRadius:8,fontSize:16,fontFamily:'Georgia,serif',fontStyle:'italic',color:'#0F172A',outline:'none',background:'white'}}
+                            placeholder="Type your full name to approve…"
+                            value={planSignatures[plan.id] || ''}
+                            onChange={e => setPlanSignatures(prev => ({...prev, [plan.id]: e.target.value}))}
+                          />
+                          <button
+                            onClick={async () => {
+                              setSigningPlan(plan.id)
+                              const sig = planSignatures[plan.id]?.trim()
+                              if (!sig) { setSigningPlan(null); return }
+                              const res = await fetch('/api/treatment-plans', {
+                                method: 'PATCH',
+                                headers: {'Content-Type':'application/json'},
+                                body: JSON.stringify({ planId: plan.id, clinicId: portalClinicId, action: 'sign', signature: sig, signedByName: patient?.full_name })
+                              })
+                              const d = await res.json()
+                              if (d.plan) setPlans(prev => prev.map(p => p.id === plan.id ? d.plan : p))
+                              setSigningPlan(null)
+                            }}
+                            disabled={!planSignatures[plan.id]?.trim() || signingPlan === plan.id}
+                            style={{padding:'10px 20px',background:'#0EA5E9',color:'white',border:'none',borderRadius:8,fontSize:13,fontWeight:600,fontFamily:"'DM Sans',sans-serif",cursor:'pointer',whiteSpace:'nowrap',opacity:(!planSignatures[plan.id]?.trim()||signingPlan===plan.id)?0.5:1}}
+                          >
+                            {signingPlan === plan.id ? 'Saving…' : 'Approve ✓'}
+                          </button>
+                        </div>
+                        <div style={{fontSize:11,color:'#94A3B8',marginTop:8}}>
+                          By typing your name, you electronically approve this plan and authorize the clinic to proceed.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Approved confirmation */}
+                    {plan.status !== 'proposed' && plan.patient_signature && (
+                      <div style={{padding:'14px 16px',background:'#F0FDF4',borderTop:'1px solid #D1FAE5',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:20}}>✅</span>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:700,color:'#059669'}}>You approved this plan</div>
+                          <div style={{fontSize:12,color:'#6B7A99',marginTop:2}}>
+                            Signed as: <em style={{fontFamily:'Georgia,serif',fontSize:14,color:'#0F172A'}}>{plan.patient_signature}</em>
+                            {plan.patient_signed_at && <span> · {new Date(plan.patient_signed_at).toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
           ) : (
             <div className="waitlist-card">
               {waitlistEntry ? (
