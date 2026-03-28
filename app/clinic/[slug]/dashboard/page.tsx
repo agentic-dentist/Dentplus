@@ -145,8 +145,8 @@ export default function DashboardPage() {
         .ov-header       { margin-bottom:28px }
         .ov-greeting     { font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#0F172A;letter-spacing:-.5px }
         .ov-date         { font-size:13px;color:#94A3B8;margin-top:4px;font-weight:500 }
-        .ov-stats        { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px }
-        .ov-stat         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:16px 20px;transition:box-shadow .15s }
+        .ov-stats        { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;align-items:stretch }
+        .ov-stat         { background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:16px 20px;transition:box-shadow .15s;min-height:100px;display:flex;flex-direction:column;justify-content:space-between }
         .ov-stat:hover   { box-shadow:0 2px 12px rgba(0,0,0,.05) }
         .ov-stat.primary { background:#4F46E5;border-color:#4F46E5 }
         .ov-stat-label   { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94A3B8;margin-bottom:8px }
