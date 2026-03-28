@@ -875,7 +875,6 @@ export default function PatientsPage() {
   }
 
   // Helpers
-  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
   const fmtTime = (d: string) => new Date(d).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Toronto' })
 
   // ── Tab renderers ─────────────────────────────────────────────────────────
